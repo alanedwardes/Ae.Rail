@@ -33,8 +33,9 @@ builder.Services.AddHttpClient<Ae.Rail.Services.INationalRailApiClient, Ae.Rail.
 	
 	client.BaseAddress = new Uri(baseUrl);
 	client.Timeout = TimeSpan.FromSeconds(30);
-	client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
-});
+	client.DefaultRequestHeaders.Add("x-apikey", apiKey);
+})
+.AddLogger<Ae.Rail.Services.NationalRailApiClient>();
 
 var app = builder.Build();
 
