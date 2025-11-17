@@ -63,7 +63,8 @@
 				<div class="muted">Origin STD</div><div id="std"></div>
 				<div class="muted">Origin</div><div id="origin"></div>
 				<div class="muted">Destination</div><div id="dest"></div>
-				<div class="muted">Classes</div><div id="classes"></div>
+				<div class="muted">Class</div><div id="classCode"></div>
+				<div class="muted">Type</div><div id="classes"></div>
 				<div class="muted">Power</div><div id="power"></div>
 			</div>
 		</div>
@@ -591,6 +592,7 @@ async function showService(otn, date, std, push = true) {
 		const destTiploc = svc.destination ? svc.destination.tiploc : '';
 		setText('origin', fmtPlace(originName, originTiploc));
 		setText('dest', fmtPlace(destName, destTiploc));
+		setText('classCode', svc.classCode ? `Class ${svc.classCode}` : '');
 		setText('classes', svc.railClasses || '');
 		setText('power', svc.powerType || '');
 		renderVehicles(vehicles);

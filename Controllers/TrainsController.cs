@@ -278,24 +278,25 @@ namespace Ae.Rail.Controllers
 					return NotFound();
 				}
 
-			var payload = new
-			{
-				record.OperationalTrainNumber,
-				record.ServiceDate,
-				OriginPlannedDepTime = record.OriginStd,
-				origin = _stationCodeLookup.GetByTiploc(record.OriginLocationName),
-				destination = _stationCodeLookup.GetByTiploc(record.DestLocationName),
-				record.RailClasses,
-				record.PowerType,
-				record.ToiCore,
-				record.ToiVariant,
-				record.ToiTimetableYear,
-				record.ToiStartDate,
-				record.TrainOriginDateTime,
-				record.TrainDestDateTime
-			};
+		var payload = new
+		{
+			record.OperationalTrainNumber,
+			record.ServiceDate,
+			OriginPlannedDepTime = record.OriginStd,
+			origin = _stationCodeLookup.GetByTiploc(record.OriginLocationName),
+			destination = _stationCodeLookup.GetByTiploc(record.DestLocationName),
+			record.ClassCode,
+			record.RailClasses,
+			record.PowerType,
+			record.ToiCore,
+			record.ToiVariant,
+			record.ToiTimetableYear,
+			record.ToiStartDate,
+			record.TrainOriginDateTime,
+			record.TrainDestDateTime
+		};
 
-			return Ok(payload);
+		return Ok(payload);
 			}
 			catch (Exception ex)
 			{
