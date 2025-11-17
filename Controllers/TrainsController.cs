@@ -17,13 +17,15 @@ namespace Ae.Rail.Controllers
 	{
 		private readonly ILogger<TrainsController> _logger;
 		private readonly PostgresDbContext _dbContext;
-			private readonly ITiplocLookup _tiplocLookup;
+		private readonly ITiplocLookup _tiplocLookup;
+		private readonly IStationCodeLookup _stationCodeLookup;
 
-			public TrainsController(ILogger<TrainsController> logger, PostgresDbContext dbContext, ITiplocLookup tiplocLookup)
+		public TrainsController(ILogger<TrainsController> logger, PostgresDbContext dbContext, ITiplocLookup tiplocLookup, IStationCodeLookup stationCodeLookup)
 		{
 			_logger = logger;
 			_dbContext = dbContext;
-				_tiplocLookup = tiplocLookup;
+			_tiplocLookup = tiplocLookup;
+			_stationCodeLookup = stationCodeLookup;
 		}
 
 		[HttpGet]
@@ -36,60 +38,49 @@ namespace Ae.Rail.Controllers
 
 			try
 			{
-				var rawRecords = await _dbContext.TrainServices
-					.Where(r => r.OperationalTrainNumber == operationalTrainNumber)
-					.OrderByDescending(r => r.TrainOriginDateTime ?? DateTime.MinValue)
-					.Select(r => new
-					{
-						r.OperationalTrainNumber,
-						r.ServiceDate,
-						OriginPlannedDepTime = r.OriginStd,
-						r.OriginLocationPrimaryCode,
-						r.OriginLocationName,
-						r.DestLocationPrimaryCode,
-						r.DestLocationName,
-						r.RailClasses,
-						r.PowerType,
-						r.ToiCore,
-						r.ToiVariant,
-						r.ToiTimetableYear,
-						r.ToiStartDate,
-						r.TrainOriginDateTime,
-						r.TrainDestDateTime,
-						r.LastUpdatedAt
-					})
-					.ToListAsync();
-
-				var records = rawRecords.Select(x =>
+			var rawRecords = await _dbContext.TrainServices
+				.Where(r => r.OperationalTrainNumber == operationalTrainNumber)
+				.OrderByDescending(r => r.TrainOriginDateTime ?? DateTime.MinValue)
+				.Select(r => new
 				{
-					_tiplocLookup.TryGetName(x.OriginLocationName, out var originResolved);
-					_tiplocLookup.TryGetName(x.DestLocationName, out var destResolved);
-					return new
-					{
-						x.OperationalTrainNumber,
-						x.ServiceDate,
-						x.OriginPlannedDepTime,
-						x.OriginLocationPrimaryCode,
-						x.OriginLocationName,
-						OriginTiploc = x.OriginLocationName,
-						OriginName = originResolved,
-						x.DestLocationPrimaryCode,
-						x.DestLocationName,
-						DestTiploc = x.DestLocationName,
-						DestName = destResolved,
-						x.RailClasses,
-						x.PowerType,
-						x.ToiCore,
-						x.ToiVariant,
-						x.ToiTimetableYear,
-						x.ToiStartDate,
-						x.TrainOriginDateTime,
-						x.TrainDestDateTime,
-						x.LastUpdatedAt
-					};
-				}).ToList();
+					r.OperationalTrainNumber,
+					r.ServiceDate,
+					OriginPlannedDepTime = r.OriginStd,
+					r.OriginLocationPrimaryCode,
+					r.OriginLocationName,
+					r.DestLocationPrimaryCode,
+					r.DestLocationName,
+					r.RailClasses,
+					r.PowerType,
+					r.ToiCore,
+					r.ToiVariant,
+					r.ToiTimetableYear,
+					r.ToiStartDate,
+					r.TrainOriginDateTime,
+					r.TrainDestDateTime,
+					r.UpdatedAt
+				})
+				.ToListAsync();
 
-				return Ok(records);
+			var records = rawRecords.Select(x => new
+			{
+				x.OperationalTrainNumber,
+				x.ServiceDate,
+				x.OriginPlannedDepTime,
+				origin = _stationCodeLookup.GetByTiploc(x.OriginLocationName),
+				destination = _stationCodeLookup.GetByTiploc(x.DestLocationName),
+				x.RailClasses,
+				x.PowerType,
+				x.ToiCore,
+				x.ToiVariant,
+				x.ToiTimetableYear,
+				x.ToiStartDate,
+				x.TrainOriginDateTime,
+				x.TrainDestDateTime,
+				x.UpdatedAt
+			}).ToList();
+
+			return Ok(records);
 			}
 			catch (Exception ex)
 			{
@@ -208,53 +199,46 @@ namespace Ae.Rail.Controllers
 				if (limit <= 0) limit = 10;
 				if (limit > 50) limit = 50;
 
-				// Join service vehicles to train services to get routing, times, etc.
-				var query =
-					from sv in _dbContext.ServiceVehicles.AsNoTracking()
-					where sv.VehicleId == vehicleId
-					join ts in _dbContext.TrainServices.AsNoTracking()
-						on new { sv.OperationalTrainNumber, sv.ServiceDate, sv.OriginStd }
-						equals new { ts.OperationalTrainNumber, ts.ServiceDate, ts.OriginStd }
-					select new
-					{
-						ts.OperationalTrainNumber,
-						ServiceDate = ts.ServiceDate,
-						OriginStd = ts.OriginStd,
-						Sta = ts.TrainDestDateTime.HasValue ? ts.TrainDestDateTime.Value.ToString("HH:mm") : null,
-						OriginTiploc = ts.OriginLocationName,
-						DestTiploc = ts.DestLocationName,
-						ts.TrainOriginDateTime,
-						ts.TrainDestDateTime
-					};
-
-				// Order by actual origin datetime when available, else by date/time strings
-				var raw = await query
-					.OrderByDescending(x => x.TrainOriginDateTime ?? DateTime.MinValue)
-					.ThenByDescending(x => x.ServiceDate)
-					.ThenByDescending(x => x.OriginStd)
-					.Take(limit)
-					.ToListAsync();
-
-				var results = raw.Select(x =>
+			// Join service vehicles to train services to get routing, times, etc.
+			var query =
+				from sv in _dbContext.ServiceVehicles.AsNoTracking()
+				where sv.VehicleId == vehicleId
+				join ts in _dbContext.TrainServices.AsNoTracking()
+					on new { sv.OperationalTrainNumber, sv.ServiceDate, sv.OriginStd }
+					equals new { ts.OperationalTrainNumber, ts.ServiceDate, ts.OriginStd }
+				select new
 				{
-					_tiplocLookup.TryGetName(x.OriginTiploc, out var originName);
-					_tiplocLookup.TryGetName(x.DestTiploc, out var destName);
-					return new
-					{
-						x.OperationalTrainNumber,
-						x.ServiceDate,
-						x.OriginStd,
-						x.Sta,
-						x.OriginTiploc,
-						OriginName = originName,
-						x.DestTiploc,
-						DestName = destName,
-						x.TrainOriginDateTime,
-						x.TrainDestDateTime
-					};
-				}).ToList();
+					ts.OperationalTrainNumber,
+					ServiceDate = ts.ServiceDate,
+					OriginStd = ts.OriginStd,
+					Sta = ts.TrainDestDateTime.HasValue ? ts.TrainDestDateTime.Value.ToString("HH:mm") : null,
+					OriginLocationName = ts.OriginLocationName,
+					DestLocationName = ts.DestLocationName,
+					ts.TrainOriginDateTime,
+					ts.TrainDestDateTime
+				};
 
-				return Ok(results);
+			// Order by actual origin datetime when available, else by date/time strings
+			var raw = await query
+				.OrderByDescending(x => x.TrainOriginDateTime ?? DateTime.MinValue)
+				.ThenByDescending(x => x.ServiceDate)
+				.ThenByDescending(x => x.OriginStd)
+				.Take(limit)
+				.ToListAsync();
+
+			var results = raw.Select(x => new
+			{
+				x.OperationalTrainNumber,
+				x.ServiceDate,
+				x.OriginStd,
+				x.Sta,
+				origin = _stationCodeLookup.GetByTiploc(x.OriginLocationName),
+				destination = _stationCodeLookup.GetByTiploc(x.DestLocationName),
+				x.TrainOriginDateTime,
+				x.TrainDestDateTime
+			}).ToList();
+
+			return Ok(results);
 			}
 			catch (Exception ex)
 			{
@@ -292,30 +276,24 @@ namespace Ae.Rail.Controllers
 					return NotFound();
 				}
 
-				var payload = new
-				{
-					record.OperationalTrainNumber,
-					record.ServiceDate,
-					OriginPlannedDepTime = record.OriginStd,
-					record.OriginLocationPrimaryCode,
-					record.OriginLocationName,
-					OriginTiploc = record.OriginLocationName,
-					OriginName = (_tiplocLookup.TryGetName(record.OriginLocationName, out var originResolved) ? originResolved : null),
-					record.DestLocationPrimaryCode,
-					record.DestLocationName,
-					DestTiploc = record.DestLocationName,
-					DestName = (_tiplocLookup.TryGetName(record.DestLocationName, out var destResolved) ? destResolved : null),
-					record.RailClasses,
-					record.PowerType,
-					record.ToiCore,
-					record.ToiVariant,
-					record.ToiTimetableYear,
-					record.ToiStartDate,
-					record.TrainOriginDateTime,
-					record.TrainDestDateTime
-				};
+			var payload = new
+			{
+				record.OperationalTrainNumber,
+				record.ServiceDate,
+				OriginPlannedDepTime = record.OriginStd,
+				origin = _stationCodeLookup.GetByTiploc(record.OriginLocationName),
+				destination = _stationCodeLookup.GetByTiploc(record.DestLocationName),
+				record.RailClasses,
+				record.PowerType,
+				record.ToiCore,
+				record.ToiVariant,
+				record.ToiTimetableYear,
+				record.ToiStartDate,
+				record.TrainOriginDateTime,
+				record.TrainDestDateTime
+			};
 
-				return Ok(payload);
+			return Ok(payload);
 			}
 			catch (Exception ex)
 			{
@@ -374,39 +352,32 @@ namespace Ae.Rail.Controllers
 					}
 				}
 
-				// MV is already deduped by (OTN, ServiceDate, OriginStd) keeping latest by received_at
-				var raw = await baseQuery
-					.OrderByDescending(r => r.TrainOriginDateTime ?? DateTime.MinValue)
-					.Select(r => new
-					{
-						r.OperationalTrainNumber,
-						ServiceDate = r.ServiceDate,
-						OriginStd = r.OriginStd,
-						Sta = r.TrainDestDateTime.HasValue ? r.TrainDestDateTime.Value.ToString("HH:mm") : null,
-						OriginTiploc = r.OriginLocationName,
-						DestTiploc = r.DestLocationName
-					})
-					.Take(limit)
-					.ToListAsync();
-
-				var results = raw.Select(x =>
+			// Table is already deduped by (OTN, ServiceDate, OriginStd, TrainOriginDateTime) keeping latest by updated_at
+			var raw = await baseQuery
+				.OrderByDescending(r => r.TrainOriginDateTime ?? DateTime.MinValue)
+				.Select(r => new
 				{
-					_tiplocLookup.TryGetName(x.OriginTiploc, out var originName);
-					_tiplocLookup.TryGetName(x.DestTiploc, out var destName);
-					return new
-					{
-						x.OperationalTrainNumber,
-						x.ServiceDate,
-						x.OriginStd,
-						x.Sta,
-						x.OriginTiploc,
-						OriginName = originName,
-						x.DestTiploc,
-						DestName = destName
-					};
-				}).ToList();
+					r.OperationalTrainNumber,
+					ServiceDate = r.ServiceDate,
+					OriginStd = r.OriginStd,
+					Sta = r.TrainDestDateTime.HasValue ? r.TrainDestDateTime.Value.ToString("HH:mm") : null,
+					OriginLocationName = r.OriginLocationName,
+					DestLocationName = r.DestLocationName
+				})
+				.Take(limit)
+				.ToListAsync();
 
-				return Ok(results);
+			var results = raw.Select(x => new
+			{
+				x.OperationalTrainNumber,
+				x.ServiceDate,
+				x.OriginStd,
+				x.Sta,
+				origin = _stationCodeLookup.GetByTiploc(x.OriginLocationName),
+				destination = _stationCodeLookup.GetByTiploc(x.DestLocationName)
+			}).ToList();
+
+			return Ok(results);
 			}
 			catch (Exception ex)
 			{

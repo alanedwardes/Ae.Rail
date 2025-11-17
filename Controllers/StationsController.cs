@@ -39,58 +39,44 @@ namespace Ae.Rail.Controllers
 				if (limit <= 0) limit = 10;
 				if (limit > 50) limit = 50;
 
-				var allStations = _stationLookup.GetAllRecords();
+			var allStations = _stationLookup.GetAllRecords();
+			
+			IEnumerable<StationCodeRecord> results;
+			
+			if (string.IsNullOrWhiteSpace(q))
+			{
+				// Return popular stations if no query
+				results = allStations
+					.Where(s => !string.IsNullOrWhiteSpace(s.ThreeAlpha) && !string.IsNullOrWhiteSpace(s.NlcDesc))
+					.OrderBy(s => s.NlcDesc)
+					.Take(limit);
+			}
+			else
+			{
+				var searchTerm = q.Trim();
 				
-				IEnumerable<object> results;
-				
-				if (string.IsNullOrWhiteSpace(q))
-				{
-					// Return popular stations if no query
-					results = allStations
-						.Where(s => !string.IsNullOrWhiteSpace(s.ThreeAlpha) && !string.IsNullOrWhiteSpace(s.NlcDesc))
-						.OrderBy(s => s.NlcDesc)
-						.Take(limit)
-						.Select(s => new
-						{
-							crs = s.ThreeAlpha,
-							tiploc = s.Tiploc,
-							name = s.NlcDesc,
-							shortName = s.NlcDesc16
-						});
-				}
-				else
-				{
-					var searchTerm = q.Trim();
-					
-					// Search by CRS code (exact or starts with) or station name (contains)
-					results = allStations
-						.Where(s => !string.IsNullOrWhiteSpace(s.ThreeAlpha) && !string.IsNullOrWhiteSpace(s.NlcDesc))
-						.Where(s => 
-							s.ThreeAlpha.Equals(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-							s.ThreeAlpha.StartsWith(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-							s.NlcDesc.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-							s.NlcDesc16.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
-						.OrderBy(s => 
-							// Exact match first
-							s.ThreeAlpha.Equals(searchTerm, StringComparison.OrdinalIgnoreCase) ? 0 :
-							// Starts with CRS second
-							s.ThreeAlpha.StartsWith(searchTerm, StringComparison.OrdinalIgnoreCase) ? 1 :
-							// Name starts with
-							s.NlcDesc.StartsWith(searchTerm, StringComparison.OrdinalIgnoreCase) ? 2 :
-							// Name contains
-							3)
-						.ThenBy(s => s.NlcDesc)
-						.Take(limit)
-						.Select(s => new
-						{
-							crs = s.ThreeAlpha,
-							tiploc = s.Tiploc,
-							name = s.NlcDesc,
-							shortName = s.NlcDesc16
-						});
-				}
+				// Search by CRS code (exact or starts with) or station name (contains)
+				results = allStations
+					.Where(s => !string.IsNullOrWhiteSpace(s.ThreeAlpha) && !string.IsNullOrWhiteSpace(s.NlcDesc))
+					.Where(s => 
+						s.ThreeAlpha.Equals(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+						s.ThreeAlpha.StartsWith(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+						s.NlcDesc.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+						s.NlcDesc16.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+					.OrderBy(s => 
+						// Exact match first
+						s.ThreeAlpha.Equals(searchTerm, StringComparison.OrdinalIgnoreCase) ? 0 :
+						// Starts with CRS second
+						s.ThreeAlpha.StartsWith(searchTerm, StringComparison.OrdinalIgnoreCase) ? 1 :
+						// Name starts with
+						s.NlcDesc.StartsWith(searchTerm, StringComparison.OrdinalIgnoreCase) ? 2 :
+						// Name contains
+						3)
+					.ThenBy(s => s.NlcDesc)
+					.Take(limit);
+			}
 
-				return Ok(results.ToList());
+			return Ok(results.ToList());
 			}
 			catch (Exception ex)
 			{
@@ -143,32 +129,26 @@ namespace Ae.Rail.Controllers
 				// Enrich services with database information
 				var enrichedServices = await EnrichServicesWithDbData(board.TrainServices);
 
-				var response = new
+			var response = new
+			{
+				station = station,
+				board = new
 				{
-					station = new
+					generatedAt = board.GeneratedAt,
+					locationName = board.LocationName,
+					platformsAreHidden = board.PlatformsAreHidden,
+					servicesAreUnavailable = board.ServicesAreUnavailable,
+					nrccMessages = board.NrccMessages?.Select(m => new
 					{
-						crs = station.ThreeAlpha,
-						tiploc = station.Tiploc,
-						name = station.NlcDesc,
-						shortName = station.NlcDesc16
-					},
-					board = new
-					{
-						generatedAt = board.GeneratedAt,
-						locationName = board.LocationName,
-						platformsAreHidden = board.PlatformsAreHidden,
-						servicesAreUnavailable = board.ServicesAreUnavailable,
-						nrccMessages = board.NrccMessages?.Select(m => new
-						{
-							category = m.Category?.ToString(),
-							severity = m.Severity?.ToString(),
-							message = m.XhtmlMessage
-						}).ToList()
-					},
-					services = enrichedServices
-				};
+						category = m.Category?.ToString(),
+						severity = m.Severity?.ToString(),
+						message = m.XhtmlMessage
+					}).ToList()
+				},
+				services = enrichedServices
+			};
 
-				return Ok(response);
+			return Ok(response);
 			}
 			catch (Exception ex)
 			{
@@ -258,26 +238,14 @@ namespace Ae.Rail.Controllers
 					arrivalType = service.ArrivalType?.ToString(),
 					departureType = service.DepartureType?.ToString(),
 					
-					// Journey
-					origin = service.Origin?.Select(o => new
-					{
-						locationName = o.LocationName,
-						crs = o.Crs,
-						tiploc = o.Tiploc
-					}).ToList(),
-					destination = service.Destination?.Select(d => new
-					{
-						locationName = d.LocationName,
-						crs = d.Crs,
-						tiploc = d.Tiploc
-					}).ToList(),
+					// Journey - resolve to StationCodeRecord using CRS (3ALPHA) from National Rail API
+					origin = service.Origin?.Select(o => _stationLookup.GetByThreeAlpha(o.Crs)).Where(s => s != null).ToList(),
+					destination = service.Destination?.Select(d => _stationLookup.GetByThreeAlpha(d.Crs)).Where(s => s != null).ToList(),
 					
 					// Calling points
 					previousLocations = service.PreviousLocations?.Select(l => new
 					{
-						locationName = l.LocationName,
-						crs = l.Crs,
-						tiploc = l.Tiploc,
+						station = _stationLookup.GetByThreeAlpha(l.Crs),
 						sta = l.Sta,
 						eta = l.Eta,
 						ata = l.Ata,
@@ -289,9 +257,7 @@ namespace Ae.Rail.Controllers
 					}).ToList(),
 					subsequentLocations = service.SubsequentLocations?.Select(l => new
 					{
-						locationName = l.LocationName,
-						crs = l.Crs,
-						tiploc = l.Tiploc,
+						station = _stationLookup.GetByThreeAlpha(l.Crs),
 						sta = l.Sta,
 						eta = l.Eta,
 						ata = l.Ata,

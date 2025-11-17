@@ -103,8 +103,8 @@ function renderItems(items) {
 		return;
 	}
 	dropdown.innerHTML = items.map(it => {
-		const from = (it.originName || it.originTiploc || '').toString().trim();
-		const to = (it.destName || it.destTiploc || '').toString().trim();
+		const from = it.origin ? (it.origin.nlcDesc || it.origin.tiploc || '') : '';
+		const to = it.destination ? (it.destination.nlcDesc || it.destination.tiploc || '') : '';
 		const staVal = it.sta;
 		const sta = staVal ? `, STA ${staVal}` : '';
 		const otn = it.operationalTrainNumber || '';
@@ -291,8 +291,8 @@ function renderVehicleUsage(items) {
 		return;
 	}
 	el.innerHTML = items.map(it => {
-		const from = (it.originName || it.originTiploc || '').toString().trim();
-		const to = (it.destName || it.destTiploc || '').toString().trim();
+		const from = it.origin ? (it.origin.nlcDesc || it.origin.tiploc || '') : '';
+		const to = it.destination ? (it.destination.nlcDesc || it.destination.tiploc || '') : '';
 		const staVal = it.sta;
 		const sta = staVal ? `, STA ${staVal}` : '';
 		const otn = it.operationalTrainNumber || '';
@@ -381,8 +381,8 @@ function renderStationItems(items) {
 		return;
 	}
 	sDropdown.innerHTML = items.map(s => {
-		const crs = s.crs || '';
-		const name = s.name || '';
+		const crs = s.threeAlpha || '';
+		const name = s.nlcDesc || '';
 		return `
 			<div class="item" data-crs="${crs}">
 				<div class="line-1">
@@ -437,8 +437,8 @@ function renderStationBoard(data) {
 	const stationMessages = document.getElementById('stationMessages');
 	const stationServices = document.getElementById('stationServices');
 	
-	stationName.textContent = data.station.name || '';
-	stationCrs.textContent = data.station.crs || '';
+	stationName.textContent = data.station.nlcDesc || '';
+	stationCrs.textContent = data.station.threeAlpha || '';
 	
 	// Show NRCC messages if any
 	if (data.board.nrccMessages && data.board.nrccMessages.length > 0) {
@@ -471,8 +471,8 @@ function renderStationBoard(data) {
 		const platformHidden = svc.platformIsHidden;
 		const cancelled = svc.isCancelled;
 		
-		const origins = (svc.origin || []).map(o => o.locationName).join(', ');
-		const destinations = (svc.destination || []).map(d => d.locationName).join(', ');
+		const origins = (svc.origin || []).map(o => o.nlcDesc || o.nlcDesc16 || o.tiploc || '').join(', ');
+		const destinations = (svc.destination || []).map(d => d.nlcDesc || d.nlcDesc16 || d.tiploc || '').join(', ');
 		
 		const stdTime = formatTime(svc.std);
 		const etdTime = formatTime(svc.etd);
@@ -481,7 +481,8 @@ function renderStationBoard(data) {
 		
 		const calling = (svc.subsequentLocations || [])
 			.slice(0, 5)
-			.map(l => l.locationName)
+			.map(l => l.station ? (l.station.nlcDesc || l.station.nlcDesc16 || l.station.tiploc || '') : '')
+			.filter(name => name)
 			.join(', ');
 		const callingText = calling ? `Calling at: ${calling}` : '';
 		
@@ -584,8 +585,12 @@ async function showService(otn, date, std, push = true) {
 		setText('otn', svc.operationalTrainNumber);
 		setText('svcdate', svc.serviceDate);
 		setText('std', svc.originPlannedDepTime);
-		setText('origin', fmtPlace(svc.originName, svc.originTiploc));
-		setText('dest', fmtPlace(svc.destName, svc.destTiploc));
+		const originName = svc.origin ? (svc.origin.nlcDesc || svc.origin.tiploc || '') : '';
+		const originTiploc = svc.origin ? svc.origin.tiploc : '';
+		const destName = svc.destination ? (svc.destination.nlcDesc || svc.destination.tiploc || '') : '';
+		const destTiploc = svc.destination ? svc.destination.tiploc : '';
+		setText('origin', fmtPlace(originName, originTiploc));
+		setText('dest', fmtPlace(destName, destTiploc));
 		setText('classes', svc.railClasses || '');
 		setText('power', svc.powerType || '');
 		renderVehicles(vehicles);

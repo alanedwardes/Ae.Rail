@@ -153,32 +153,41 @@ namespace Ae.Rail.Services
 					UpdatedAt = DateTime.UtcNow
 				};
 
-				// Destination time
-				if (firstAllocation.TryGetProperty("TrainDestDateTime", out var destTimeProp))
+			// Destination time
+			if (firstAllocation.TryGetProperty("TrainDestDateTime", out var destTimeProp))
+			{
+				var destTimeStr = destTimeProp.GetString();
+				if (!string.IsNullOrEmpty(destTimeStr) && DateTime.TryParse(destTimeStr, out var destTime))
 				{
-					var destTimeStr = destTimeProp.GetString();
-					if (!string.IsNullOrEmpty(destTimeStr) && DateTime.TryParse(destTimeStr, out var destTime))
-					{
-						trainService.TrainDestDateTime = DateTime.SpecifyKind(destTime, DateTimeKind.Utc);
-					}
+					trainService.TrainDestDateTime = DateTime.SpecifyKind(destTime, DateTimeKind.Utc);
 				}
+			}
 
-				// Locations
-				if (root.TryGetProperty("Location", out var locations) && locations.GetArrayLength() >= 2)
+			// Origin location
+			if (firstAllocation.TryGetProperty("TrainOriginLocation", out var originLocation))
+			{
+				if (originLocation.TryGetProperty("LocationPrimaryCode", out var originCode))
+					trainService.OriginLocationPrimaryCode = originCode.GetString();
+				
+				if (originLocation.TryGetProperty("LocationSubsidiaryIdentification", out var originSubsidiary))
 				{
-					var origin = locations[0];
-					var dest = locations[1];
-
-					if (origin.TryGetProperty("LocationPrimaryCode", out var originCode))
-						trainService.OriginLocationPrimaryCode = originCode.GetString();
-					if (origin.TryGetProperty("LocationName", out var originName))
+					if (originSubsidiary.TryGetProperty("LocationSubsidiaryCode", out var originName))
 						trainService.OriginLocationName = originName.GetString();
+				}
+			}
 
-					if (dest.TryGetProperty("LocationPrimaryCode", out var destCode))
-						trainService.DestLocationPrimaryCode = destCode.GetString();
-					if (dest.TryGetProperty("LocationName", out var destName))
+			// Destination location
+			if (firstAllocation.TryGetProperty("TrainDestLocation", out var destLocation))
+			{
+				if (destLocation.TryGetProperty("LocationPrimaryCode", out var destCode))
+					trainService.DestLocationPrimaryCode = destCode.GetString();
+				
+				if (destLocation.TryGetProperty("LocationSubsidiaryIdentification", out var destSubsidiary))
+				{
+					if (destSubsidiary.TryGetProperty("LocationSubsidiaryCode", out var destName))
 						trainService.DestLocationName = destName.GetString();
 				}
+			}
 
 				// Resource group info
 				if (firstAllocation.TryGetProperty("ResourceGroup", out var resourceGroup))
