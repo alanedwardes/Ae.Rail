@@ -15,18 +15,20 @@ namespace Ae.Rail.Controllers
 	[Route("/api/v1/trains")]
 	public sealed class TrainsController : ControllerBase
 	{
-		private readonly ILogger<TrainsController> _logger;
-		private readonly PostgresDbContext _dbContext;
-		private readonly ITiplocLookup _tiplocLookup;
-		private readonly IStationCodeLookup _stationCodeLookup;
+	private readonly ILogger<TrainsController> _logger;
+	private readonly PostgresDbContext _dbContext;
+	private readonly ITiplocLookup _tiplocLookup;
+	private readonly IStationCodeLookup _stationCodeLookup;
+	private readonly IStationFinder _stationFinder;
 
-		public TrainsController(ILogger<TrainsController> logger, PostgresDbContext dbContext, ITiplocLookup tiplocLookup, IStationCodeLookup stationCodeLookup)
-		{
-			_logger = logger;
-			_dbContext = dbContext;
-			_tiplocLookup = tiplocLookup;
-			_stationCodeLookup = stationCodeLookup;
-		}
+	public TrainsController(ILogger<TrainsController> logger, PostgresDbContext dbContext, ITiplocLookup tiplocLookup, IStationCodeLookup stationCodeLookup, IStationFinder stationFinder)
+	{
+		_logger = logger;
+		_dbContext = dbContext;
+		_tiplocLookup = tiplocLookup;
+		_stationCodeLookup = stationCodeLookup;
+		_stationFinder = stationFinder;
+	}
 
 		[HttpGet]
 		public async Task<IActionResult> GetByOperationalTrainNumber([FromQuery(Name = "OperationalTrainNumber")] string operationalTrainNumber)
@@ -313,44 +315,47 @@ namespace Ae.Rail.Controllers
 
 				var baseQuery = _dbContext.TrainServices.AsNoTracking().AsQueryable();
 
-				if (!string.IsNullOrWhiteSpace(q))
+			if (!string.IsNullOrWhiteSpace(q))
+			{
+				// Special handling for "origin to destination" format
+				var tokens = q.Split(new[] { " to " }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+				if (tokens.Length == 2)
 				{
-					var tokens = q.Split(new[] { " to " }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-					if (tokens.Length == 2)
-					{
-						var originToken = tokens[0];
-						var destToken = tokens[1];
+					var originToken = tokens[0];
+					var destToken = tokens[1];
 
-						var originCodes = _tiplocLookup.FindCodesByNameContains(originToken);
-						var destCodes = _tiplocLookup.FindCodesByNameContains(destToken);
+					// Use StationFinder to identify stations
+					var originStations = _stationFinder.FindStationTiplocsBySearchTerm(originToken);
+					var destStations = _stationFinder.FindStationTiplocsBySearchTerm(destToken);
 
-						baseQuery = baseQuery.Where(r =>
-							(
-								EF.Functions.Like(r.OriginLocationName ?? "", "%" + originToken + "%")
-								|| (originCodes.Count > 0 && originCodes.Contains(r.OriginLocationName))
-							)
-							&&
-							(
-								EF.Functions.Like(r.DestLocationName ?? "", "%" + destToken + "%")
-								|| (destCodes.Count > 0 && destCodes.Contains(r.DestLocationName))
-							)
-						);
-					}
-					else
-					{
-						var token = q.Trim();
-
-						var tokenCodes = _tiplocLookup.FindCodesByNameContains(token);
-
-						baseQuery = baseQuery.Where(r =>
-							EF.Functions.Like(r.OperationalTrainNumber ?? "", "%" + token + "%")
-							|| EF.Functions.Like(r.OriginLocationName ?? "", "%" + token + "%")
-							|| EF.Functions.Like(r.DestLocationName ?? "", "%" + token + "%")
-							|| (tokenCodes.Count > 0 && tokenCodes.Contains(r.OriginLocationName))
-							|| (tokenCodes.Count > 0 && tokenCodes.Contains(r.DestLocationName))
-						);
-					}
+					baseQuery = baseQuery.Where(r =>
+						(
+							EF.Functions.Like(r.OriginLocationName ?? "", "%" + originToken + "%")
+							|| (originStations.Count > 0 && originStations.Contains(r.OriginLocationName))
+						)
+						&&
+						(
+							EF.Functions.Like(r.DestLocationName ?? "", "%" + destToken + "%")
+							|| (destStations.Count > 0 && destStations.Contains(r.DestLocationName))
+						)
+					);
 				}
+				else
+				{
+					var token = q.Trim();
+
+					// Use StationFinder to identify stations
+					var matchingStations = _stationFinder.FindStationTiplocsBySearchTerm(token);
+
+					baseQuery = baseQuery.Where(r =>
+						EF.Functions.Like(r.OperationalTrainNumber ?? "", "%" + token + "%")
+						|| EF.Functions.Like(r.OriginLocationName ?? "", "%" + token + "%")
+						|| EF.Functions.Like(r.DestLocationName ?? "", "%" + token + "%")
+						|| (matchingStations.Count > 0 && matchingStations.Contains(r.OriginLocationName))
+						|| (matchingStations.Count > 0 && matchingStations.Contains(r.DestLocationName))
+					);
+				}
+			}
 
 			// Table is already deduped by (OTN, ServiceDate, OriginStd, TrainOriginDateTime) keeping latest by updated_at
 			var raw = await baseQuery

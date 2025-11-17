@@ -29,6 +29,7 @@ builder.Services.AddHostedService<Ae.Rail.Services.ReprocessorService>();
 // builder.Services.AddHostedService<Ae.Rail.Services.MvRefreshService>();
 builder.Services.AddSingleton<Ae.Rail.Services.ITiplocLookup, Ae.Rail.Services.TiplocLookup>();
 builder.Services.AddSingleton<Ae.Rail.Services.IStationCodeLookup, Ae.Rail.Services.StationCodeLookup>();
+builder.Services.AddSingleton<Ae.Rail.Services.IStationFinder, Ae.Rail.Services.StationFinder>();
 
 // Configure forwarded headers to read X-Forwarded-For from proxy
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
