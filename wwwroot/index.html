@@ -591,7 +591,7 @@ async function showService(otn, date, std, push = true) {
 		renderVehicles(vehicles);
 	} catch (e) {
 		console.error(e);
-		document.getElementById('vehicles').innerHTML = '<div class="muted">Failed to load service. Check API URL or parameters.</div>';
+		document.getElementById('vehicles').innerHTML = '<div class="muted">Could not identify the vehicles for this service.</div>';
 	}
 }
 

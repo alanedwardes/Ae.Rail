@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Ae.Rail.Data;
@@ -44,13 +45,17 @@ namespace Ae.Rail.Services
 					{
 					try
 					{
+						var sw = Stopwatch.StartNew();
 						await db.Database.ExecuteSqlRawAsync("refresh materialized view trainservice_v1;", stoppingToken);
-						_logger.LogDebug("Refreshed materialized view trainservice_v1 at {TimeUtc}", DateTime.UtcNow);
+						sw.Stop();
+						_logger.LogInformation("Refreshed materialized view trainservice_v1 in {ElapsedMs}ms", sw.ElapsedMilliseconds);
 
 						try
 						{
+							sw.Restart();
 							await db.Database.ExecuteSqlRawAsync("refresh materialized view vehicle_v1;", stoppingToken);
-							_logger.LogDebug("Refreshed materialized view vehicle_v1 at {TimeUtc}", DateTime.UtcNow);
+							sw.Stop();
+							_logger.LogInformation("Refreshed materialized view vehicle_v1 in {ElapsedMs}ms", sw.ElapsedMilliseconds);
 						}
 						catch (Exception ex2)
 						{
@@ -59,8 +64,10 @@ namespace Ae.Rail.Services
 
 						try
 						{
+							sw.Restart();
 							await db.Database.ExecuteSqlRawAsync("refresh materialized view service_vehicle_v1;", stoppingToken);
-							_logger.LogDebug("Refreshed materialized view service_vehicle_v1 at {TimeUtc}", DateTime.UtcNow);
+							sw.Stop();
+							_logger.LogInformation("Refreshed materialized view service_vehicle_v1 in {ElapsedMs}ms", sw.ElapsedMilliseconds);
 						}
 						catch (Exception ex3)
 						{
