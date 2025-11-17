@@ -24,6 +24,18 @@ builder.Services.AddHostedService<Ae.Rail.Services.MvRefreshService>();
 builder.Services.AddSingleton<Ae.Rail.Services.ITiplocLookup, Ae.Rail.Services.TiplocLookup>();
 builder.Services.AddSingleton<Ae.Rail.Services.IStationCodeLookup, Ae.Rail.Services.StationCodeLookup>();
 
+// Register National Rail API Client
+builder.Services.AddHttpClient<Ae.Rail.Services.INationalRailApiClient, Ae.Rail.Services.NationalRailApiClient>((sp, client) =>
+{
+	var config = sp.GetRequiredService<IConfiguration>();
+	var baseUrl = config.GetValue<string>("NationalRail:BaseUrl") ?? throw new InvalidOperationException("NationalRail:BaseUrl configuration is required");
+	var apiKey = config.GetValue<string>("NationalRail:ApiKey") ?? throw new InvalidOperationException("NationalRail:ApiKey configuration is required");
+	
+	client.BaseAddress = new Uri(baseUrl);
+	client.Timeout = TimeSpan.FromSeconds(30);
+	client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+});
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())

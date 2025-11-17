@@ -13,6 +13,8 @@ services:
       trains__topic: ${TRAINS_TOPIC}
       trains__consumerGroup: ${TRAINS_CONSUMER_GROUP}
       postgres__connectionString: ${POSTGRES_CONNECTION_STRING}
+      NationalRail__BaseUrl: ${NATIONAL_RAIL_BASE_URL}
+      NationalRail__ApiKey: ${NATIONAL_RAIL_API_KEY}
     ports:
       - "${WEB_PORT}:5000"
     depends_on:
