@@ -506,17 +506,49 @@ namespace Ae.Rail.Services
 			}
 		}
 
-		private async Task UpsertTrainServiceAsync(TrainServiceEntity trainService, CancellationToken cancellationToken)
-		{
-			var existing = await _dbContext.Set<TrainServiceEntity>()
-				.FirstOrDefaultAsync(t =>
-					t.OperationalTrainNumber == trainService.OperationalTrainNumber &&
-					t.ServiceDate == trainService.ServiceDate &&
-					t.OriginStd == trainService.OriginStd &&
-					t.TrainOriginDateTime == trainService.TrainOriginDateTime,
-					cancellationToken);
+	private async Task UpsertTrainServiceAsync(TrainServiceEntity trainService, CancellationToken cancellationToken)
+	{
+		// Check local tracked entities first (for duplicates in same message)
+		var local = _dbContext.Set<TrainServiceEntity>()
+			.Local
+			.FirstOrDefault(t =>
+				t.OperationalTrainNumber == trainService.OperationalTrainNumber &&
+				t.ServiceDate == trainService.ServiceDate &&
+				t.OriginStd == trainService.OriginStd &&
+				t.TrainOriginDateTime == trainService.TrainOriginDateTime);
 
-			if (existing != null)
+		if (local != null)
+		{
+			// Already being tracked in this batch, update it
+			local.OriginLocationPrimaryCode = trainService.OriginLocationPrimaryCode;
+			local.OriginLocationName = trainService.OriginLocationName;
+			local.DestLocationPrimaryCode = trainService.DestLocationPrimaryCode;
+			local.DestLocationName = trainService.DestLocationName;
+			local.TrainDestDateTime = trainService.TrainDestDateTime;
+			local.ResourceGroupId = trainService.ResourceGroupId;
+			local.TypeOfResource = trainService.TypeOfResource;
+			local.FleetId = trainService.FleetId;
+			local.PowerType = trainService.PowerType;
+			local.ClassCode = trainService.ClassCode;
+			local.RailClasses = trainService.RailClasses;
+			local.ToiCore = trainService.ToiCore;
+			local.ToiVariant = trainService.ToiVariant;
+			local.ToiTimetableYear = trainService.ToiTimetableYear;
+			local.ToiStartDate = trainService.ToiStartDate;
+			local.UpdatedAt = DateTime.UtcNow;
+			return;
+		}
+
+		// Check database
+		var existing = await _dbContext.Set<TrainServiceEntity>()
+			.FirstOrDefaultAsync(t =>
+				t.OperationalTrainNumber == trainService.OperationalTrainNumber &&
+				t.ServiceDate == trainService.ServiceDate &&
+				t.OriginStd == trainService.OriginStd &&
+				t.TrainOriginDateTime == trainService.TrainOriginDateTime,
+				cancellationToken);
+
+		if (existing != null)
 			{
 				// Update existing
 				existing.OriginLocationPrimaryCode = trainService.OriginLocationPrimaryCode;
@@ -544,12 +576,49 @@ namespace Ae.Rail.Services
 			}
 		}
 
-		private async Task UpsertVehicleAsync(VehicleEntity vehicle, CancellationToken cancellationToken)
-		{
-			var existing = await _dbContext.Set<VehicleEntity>()
-				.FirstOrDefaultAsync(v => v.VehicleId == vehicle.VehicleId, cancellationToken);
+	private async Task UpsertVehicleAsync(VehicleEntity vehicle, CancellationToken cancellationToken)
+	{
+		// Check local tracked entities first (for duplicates in same message)
+		var local = _dbContext.Set<VehicleEntity>()
+			.Local
+			.FirstOrDefault(v => v.VehicleId == vehicle.VehicleId);
 
-			if (existing != null)
+		if (local != null)
+		{
+			// Already being tracked in this batch, update it
+			local.SpecificType = vehicle.SpecificType;
+			local.TypeOfVehicle = vehicle.TypeOfVehicle;
+			local.NumberOfCabs = vehicle.NumberOfCabs;
+			local.NumberOfSeats = vehicle.NumberOfSeats;
+			local.LengthUnit = vehicle.LengthUnit;
+			local.LengthMm = vehicle.LengthMm;
+			local.Weight = vehicle.Weight;
+			local.MaximumSpeed = vehicle.MaximumSpeed;
+			local.TrainBrakeType = vehicle.TrainBrakeType;
+			local.Livery = vehicle.Livery;
+			local.Decor = vehicle.Decor;
+			local.VehicleStatus = vehicle.VehicleStatus;
+			local.RegisteredStatus = vehicle.RegisteredStatus;
+			local.RegisteredCategory = vehicle.RegisteredCategory;
+			local.DateRegistered = vehicle.DateRegistered;
+			local.DateEnteredService = vehicle.DateEnteredService;
+			local.ResourcePosition = vehicle.ResourcePosition;
+			local.PlannedResourceGroup = vehicle.PlannedResourceGroup;
+			local.ResourceGroupId = vehicle.ResourceGroupId;
+			local.FleetId = vehicle.FleetId;
+			local.TypeOfResource = vehicle.TypeOfResource;
+			local.IsLocomotive = vehicle.IsLocomotive;
+			local.ClassCode = vehicle.ClassCode;
+			local.PowerType = vehicle.PowerType;
+			local.UpdatedAt = DateTime.UtcNow;
+			return;
+		}
+
+		// Check database
+		var existing = await _dbContext.Set<VehicleEntity>()
+			.FirstOrDefaultAsync(v => v.VehicleId == vehicle.VehicleId, cancellationToken);
+
+		if (existing != null)
 			{
 				// Update existing
 				existing.SpecificType = vehicle.SpecificType;
@@ -587,17 +656,57 @@ namespace Ae.Rail.Services
 			}
 		}
 
-		private async Task UpsertServiceVehicleAsync(ServiceVehicleEntity serviceVehicle, CancellationToken cancellationToken)
-		{
-			var existing = await _dbContext.Set<ServiceVehicleEntity>()
-				.FirstOrDefaultAsync(sv =>
-					sv.OperationalTrainNumber == serviceVehicle.OperationalTrainNumber &&
-					sv.ServiceDate == serviceVehicle.ServiceDate &&
-					sv.OriginStd == serviceVehicle.OriginStd &&
-					sv.VehicleId == serviceVehicle.VehicleId,
-					cancellationToken);
+	private async Task UpsertServiceVehicleAsync(ServiceVehicleEntity serviceVehicle, CancellationToken cancellationToken)
+	{
+		// Check local tracked entities first (for duplicates in same message)
+		var local = _dbContext.Set<ServiceVehicleEntity>()
+			.Local
+			.FirstOrDefault(sv =>
+				sv.OperationalTrainNumber == serviceVehicle.OperationalTrainNumber &&
+				sv.ServiceDate == serviceVehicle.ServiceDate &&
+				sv.OriginStd == serviceVehicle.OriginStd &&
+				sv.VehicleId == serviceVehicle.VehicleId);
 
-			if (existing != null)
+		if (local != null)
+		{
+			// Already being tracked in this batch, update it
+			local.SpecificType = serviceVehicle.SpecificType;
+			local.TypeOfVehicle = serviceVehicle.TypeOfVehicle;
+			local.NumberOfCabs = serviceVehicle.NumberOfCabs;
+			local.NumberOfSeats = serviceVehicle.NumberOfSeats;
+			local.LengthUnit = serviceVehicle.LengthUnit;
+			local.LengthMm = serviceVehicle.LengthMm;
+			local.Weight = serviceVehicle.Weight;
+			local.MaximumSpeed = serviceVehicle.MaximumSpeed;
+			local.TrainBrakeType = serviceVehicle.TrainBrakeType;
+			local.Livery = serviceVehicle.Livery;
+			local.Decor = serviceVehicle.Decor;
+			local.VehicleStatus = serviceVehicle.VehicleStatus;
+			local.RegisteredStatus = serviceVehicle.RegisteredStatus;
+			local.RegisteredCategory = serviceVehicle.RegisteredCategory;
+			local.DateRegistered = serviceVehicle.DateRegistered;
+			local.DateEnteredService = serviceVehicle.DateEnteredService;
+			local.ResourcePosition = serviceVehicle.ResourcePosition;
+			local.PlannedResourceGroup = serviceVehicle.PlannedResourceGroup;
+			local.ResourceGroupId = serviceVehicle.ResourceGroupId;
+			local.FleetId = serviceVehicle.FleetId;
+			local.TypeOfResource = serviceVehicle.TypeOfResource;
+			local.IsLocomotive = serviceVehicle.IsLocomotive;
+			local.ClassCode = serviceVehicle.ClassCode;
+			local.UpdatedAt = DateTime.UtcNow;
+			return;
+		}
+
+		// Check database
+		var existing = await _dbContext.Set<ServiceVehicleEntity>()
+			.FirstOrDefaultAsync(sv =>
+				sv.OperationalTrainNumber == serviceVehicle.OperationalTrainNumber &&
+				sv.ServiceDate == serviceVehicle.ServiceDate &&
+				sv.OriginStd == serviceVehicle.OriginStd &&
+				sv.VehicleId == serviceVehicle.VehicleId,
+				cancellationToken);
+
+		if (existing != null)
 			{
 				// Update existing
 				existing.SpecificType = serviceVehicle.SpecificType;
