@@ -155,13 +155,15 @@ namespace Ae.Rail.Services
 
             try
             {
-				// Write raw Kafka message to Postgres (audit trail)
-				await rawWriter.WriteAsync(result, cancellationToken);
+			// Write raw Kafka message to Postgres (audit trail)
+			await rawWriter.WriteAsync(result, cancellationToken);
 
                 // Parse and write to structured tables (real-time)
                 try
                 {
                     await parser.ParseAndSaveAsync(result.Message.Value, cancellationToken);
+                    // Save immediately for real-time processing
+                    await dbContext.SaveChangesAsync(cancellationToken);
                 }
                 catch (Exception parseEx)
                 {

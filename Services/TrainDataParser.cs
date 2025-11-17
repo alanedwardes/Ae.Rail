@@ -119,21 +119,21 @@ namespace Ae.Rail.Services
 					await UpsertVehicleAsync(vehicle, cancellationToken);
 				}
 
-				// Parse service vehicles
-				var serviceVehicles = ParseServiceVehicles(payload, otn, serviceDate, originStd);
-				foreach (var serviceVehicle in serviceVehicles)
-				{
-					await UpsertServiceVehicleAsync(serviceVehicle, cancellationToken);
-				}
-
-				await _dbContext.SaveChangesAsync(cancellationToken);
-				return true;
-			}
-			catch (Exception ex)
+			// Parse service vehicles
+			var serviceVehicles = ParseServiceVehicles(payload, otn, serviceDate, originStd);
+			foreach (var serviceVehicle in serviceVehicles)
 			{
-				_logger.LogWarning(ex, "Failed to parse and save train data");
-				return false;
+				await UpsertServiceVehicleAsync(serviceVehicle, cancellationToken);
 			}
+
+			// NOTE: Does NOT save - caller must call SaveChangesAsync for batching efficiency
+			return true;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to parse and save train data");
+			return false;
+		}
 		}
 
 		private TrainServiceEntity? ParseTrainService(JsonDocument payload, string otn, string serviceDate, string originStd, DateTime originDateTime)

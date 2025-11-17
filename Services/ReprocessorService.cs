@@ -105,14 +105,17 @@ namespace Ae.Rail.Services
 			var parser = scope.ServiceProvider.GetRequiredService<ITrainDataParser>();
 
 			var batchSize = _configuration.GetValue<int?>("Reprocessor:BatchSize") ?? 1000;
+			var saveBatchSize = 100; // Save every 100 messages for speed
 
 			// Get total count
 			var totalCount = await dbContext.MessageEnvelopes.CountAsync(stoppingToken);
-			_logger.LogInformation("Reprocessor: Processing {TotalCount} messages in batches of {BatchSize}", totalCount, batchSize);
+			_logger.LogInformation("Reprocessor: Processing {TotalCount} messages (fetching in batches of {BatchSize}, saving every {SaveBatchSize})", 
+				totalCount, batchSize, saveBatchSize);
 
 			long processedCount = 0;
 			long successCount = 0;
 			long lastId = 0;
+			int pendingSaves = 0;
 
 			while (!stoppingToken.IsCancellationRequested)
 			{
@@ -132,9 +135,11 @@ namespace Ae.Rail.Services
 				{
 					try
 					{
+						// Parse WITHOUT auto-saving (accumulate in DbContext)
 						var success = await parser.ParseAndSaveAsync(envelope.Payload, stoppingToken);
 						if (success)
 							successCount++;
+						pendingSaves++;
 					}
 					catch (Exception ex)
 					{
@@ -143,6 +148,13 @@ namespace Ae.Rail.Services
 
 					lastId = envelope.Id;
 					processedCount++;
+
+					// Save every saveBatchSize messages
+					if (pendingSaves >= saveBatchSize)
+					{
+						await dbContext.SaveChangesAsync(stoppingToken);
+						pendingSaves = 0;
+					}
 				}
 
 				// Log progress every 10k records
@@ -152,6 +164,12 @@ namespace Ae.Rail.Services
 					_logger.LogInformation("Reprocessor: Progress {ProcessedCount}/{TotalCount} ({Progress:F1}%), {SuccessCount} successful",
 						processedCount, totalCount, progress, successCount);
 				}
+			}
+
+			// Final save for any remaining changes
+			if (pendingSaves > 0)
+			{
+				await dbContext.SaveChangesAsync(stoppingToken);
 			}
 
 			_logger.LogInformation("Reprocessor: Final count - processed {ProcessedCount}, successful {SuccessCount}",
