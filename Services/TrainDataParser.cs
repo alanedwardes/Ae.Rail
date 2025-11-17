@@ -330,21 +330,14 @@ namespace Ae.Rail.Services
 					UpdatedAt = DateTime.UtcNow
 				};
 
-				if (veh.TryGetProperty("SpecificType", out var st)) vehicle.SpecificType = st.GetString();
-				if (veh.TryGetProperty("TypeOfVehicle", out var tov)) vehicle.TypeOfVehicle = tov.GetString();
-				if (veh.TryGetProperty("Cabs", out var cabs) && cabs.ValueKind == JsonValueKind.Number) vehicle.NumberOfCabs = cabs.GetInt32();
-				if (veh.TryGetProperty("NumberOfSeats", out var seats) && seats.ValueKind == JsonValueKind.Number) vehicle.NumberOfSeats = seats.GetInt32();
-				
-				if (veh.TryGetProperty("Length", out var length))
-				{
-					if (length.TryGetProperty("Measure", out var unit)) vehicle.LengthUnit = unit.GetString();
-					if (length.TryGetProperty("Value", out var val) && val.ValueKind == JsonValueKind.Number)
-					{
-						vehicle.LengthMm = (int)val.GetDecimal();
-					}
-				}
+			if (veh.TryGetProperty("SpecificType", out var st)) vehicle.SpecificType = st.GetString();
+			if (veh.TryGetProperty("TypeOfVehicle", out var tov)) vehicle.TypeOfVehicle = tov.GetString();
+			if (veh.TryGetProperty("Cabs", out var cabs) && cabs.ValueKind == JsonValueKind.Number) vehicle.NumberOfCabs = cabs.GetInt32();
+			if (veh.TryGetProperty("NumberOfSeats", out var seats) && seats.ValueKind == JsonValueKind.Number) vehicle.NumberOfSeats = seats.GetInt32();
+			
+			ParseLength(veh, out vehicle.LengthUnit, out vehicle.LengthMm);
 
-				if (veh.TryGetProperty("Weight", out var weight) && weight.ValueKind == JsonValueKind.Number) vehicle.Weight = weight.GetInt32();
+			if (veh.TryGetProperty("Weight", out var weight) && weight.ValueKind == JsonValueKind.Number) vehicle.Weight = weight.GetInt32();
 				if (veh.TryGetProperty("MaximumSpeed", out var maxSpeed) && maxSpeed.ValueKind == JsonValueKind.Number) vehicle.MaximumSpeed = maxSpeed.GetInt32();
 				if (veh.TryGetProperty("TrainBrakeType", out var tbt)) vehicle.TrainBrakeType = tbt.GetString();
 				if (veh.TryGetProperty("Livery", out var livery)) vehicle.Livery = livery.GetString();
@@ -460,21 +453,14 @@ namespace Ae.Rail.Services
 					UpdatedAt = DateTime.UtcNow
 				};
 
-				if (veh.TryGetProperty("SpecificType", out var st)) serviceVehicle.SpecificType = st.GetString();
-				if (veh.TryGetProperty("TypeOfVehicle", out var tov)) serviceVehicle.TypeOfVehicle = tov.GetString();
-				if (veh.TryGetProperty("Cabs", out var cabs) && cabs.ValueKind == JsonValueKind.Number) serviceVehicle.NumberOfCabs = cabs.GetInt32();
-				if (veh.TryGetProperty("NumberOfSeats", out var seats) && seats.ValueKind == JsonValueKind.Number) serviceVehicle.NumberOfSeats = seats.GetInt32();
-				
-				if (veh.TryGetProperty("Length", out var length))
-				{
-					if (length.TryGetProperty("Measure", out var unit)) serviceVehicle.LengthUnit = unit.GetString();
-					if (length.TryGetProperty("Value", out var val) && val.ValueKind == JsonValueKind.Number)
-					{
-						serviceVehicle.LengthMm = (int)val.GetDecimal();
-					}
-				}
+			if (veh.TryGetProperty("SpecificType", out var st)) serviceVehicle.SpecificType = st.GetString();
+			if (veh.TryGetProperty("TypeOfVehicle", out var tov)) serviceVehicle.TypeOfVehicle = tov.GetString();
+			if (veh.TryGetProperty("Cabs", out var cabs) && cabs.ValueKind == JsonValueKind.Number) serviceVehicle.NumberOfCabs = cabs.GetInt32();
+			if (veh.TryGetProperty("NumberOfSeats", out var seats) && seats.ValueKind == JsonValueKind.Number) serviceVehicle.NumberOfSeats = seats.GetInt32();
+			
+			ParseLength(veh, out serviceVehicle.LengthUnit, out serviceVehicle.LengthMm);
 
-				if (veh.TryGetProperty("Weight", out var weight) && weight.ValueKind == JsonValueKind.Number) serviceVehicle.Weight = weight.GetInt32();
+			if (veh.TryGetProperty("Weight", out var weight) && weight.ValueKind == JsonValueKind.Number) serviceVehicle.Weight = weight.GetInt32();
 				if (veh.TryGetProperty("MaximumSpeed", out var maxSpeed) && maxSpeed.ValueKind == JsonValueKind.Number) serviceVehicle.MaximumSpeed = maxSpeed.GetInt32();
 				if (veh.TryGetProperty("TrainBrakeType", out var tbt)) serviceVehicle.TrainBrakeType = tbt.GetString();
 				if (veh.TryGetProperty("Livery", out var livery)) serviceVehicle.Livery = livery.GetString();
@@ -819,7 +805,21 @@ namespace Ae.Rail.Services
 			return typeOfResource.ToUpperInvariant().Contains("M") ? "Multiple Unit" : "Loco Hauled";
 		}
 
-		private static string? GetPowerTypeFromClass(string? classCode)
+		private static void ParseLength(JsonElement veh, out string? lengthUnit, out int? lengthMm)
+	{
+		lengthUnit = null;
+		lengthMm = null;
+
+		if (veh.TryGetProperty("Length", out var length))
+		{
+			if (length.TryGetProperty("Unit", out var unit))
+				lengthUnit = unit.GetString();
+			if (length.TryGetProperty("Value", out var val) && val.ValueKind == JsonValueKind.Number)
+				lengthMm = (int)val.GetDecimal();
+		}
+	}
+
+	private static string? GetPowerTypeFromClass(string? classCode)
 		{
 			if (string.IsNullOrWhiteSpace(classCode) || !int.TryParse(classCode, out var cls))
 				return null;
