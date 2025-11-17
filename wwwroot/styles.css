@@ -27,6 +27,15 @@ html, body {
 	font-size: 28px;
 	font-weight: 700;
 	text-align: center;
+	text-decoration: none;
+	color: var(--text);
+	display: block;
+	cursor: pointer;
+	transition: color 0.2s ease;
+}
+.title:hover {
+	color: var(--accent);
+	text-decoration: none;
 }
 .search-panels {
 	display: grid;

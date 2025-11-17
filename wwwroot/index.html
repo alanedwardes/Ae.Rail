@@ -9,7 +9,7 @@
 <body>
 <div class="container">
 	<div class="header">
-		<div class="title">Train Information</div>
+		<a href="#" id="homeLink" class="title">Train Information</a>
 	</div>
 	<div id="search" class="search-panels">
 		<!-- Service Search Panel -->
@@ -69,6 +69,7 @@ const vresult = document.getElementById('vresult');
 const searchPanel = document.getElementById('search');
 const svcPanel = document.getElementById('svc');
 const backBtn = document.getElementById('backBtn');
+const homeLink = document.getElementById('homeLink');
 let abortCtrl = null;
 let timer = null;
 
@@ -417,6 +418,11 @@ async function showService(otn, date, std, push = true) {
 	});
 
 	backBtn.addEventListener('click', (e) => {
+		e.preventDefault();
+		showSearch(true);
+	});
+
+	homeLink.addEventListener('click', (e) => {
 		e.preventDefault();
 		showSearch(true);
 	});
