@@ -12,6 +12,15 @@
 		<a href="#" id="homeLink" class="title">Train Information</a>
 	</div>
 	<div id="search" class="search-panels">
+		<!-- Station Search Panel -->
+		<div class="panel">
+			<h2 class="panel-title">Station Departures & Arrivals</h2>
+			<div class="search-box">
+				<input id="sq" class="search-input" type="text" placeholder="Try 'Paddington' or 'PAD'">
+				<div id="sDropdown" class="dropdown" style="display:none;"></div>
+			</div>
+			<div class="hint">Search for live departure and arrival boards from National Rail. Type a station name or CRS code.</div>
+		</div>
 		<!-- Service Search Panel -->
 		<div class="panel">
 			<h2 class="panel-title">Service Search</h2>
@@ -30,6 +39,16 @@
 			</div>
 			<div class="hint">Search for a specific railway vehicle by its identification number.</div>
 			<div id="vresult" class="section"></div>
+		</div>
+	</div>
+	<div id="station" class="panel" style="display:none;">
+		<div class="section" style="display:flex; justify-content:space-between; align-items:center;">
+			<h3 style="margin:0;"><span id="stationName"></span> (<span id="stationCrs" class="mono"></span>)</h3>
+			<a id="stationBackBtn" href="#" class="muted" style="font-size:13px;">← Back to search</a>
+		</div>
+		<div id="stationMessages" class="section" style="display:none;"></div>
+		<div class="section">
+			<div id="stationServices" class="list"></div>
 		</div>
 	</div>
 	<div id="svc" class="panel" style="display:none;">
@@ -65,10 +84,14 @@ const q = document.getElementById('q');
 const dropdown = document.getElementById('dropdown');
 const vq = document.getElementById('vq');
 const vDropdown = document.getElementById('vDropdown');
+const sq = document.getElementById('sq');
+const sDropdown = document.getElementById('sDropdown');
 const vresult = document.getElementById('vresult');
 const searchPanel = document.getElementById('search');
 const svcPanel = document.getElementById('svc');
+const stationPanel = document.getElementById('station');
 const backBtn = document.getElementById('backBtn');
+const stationBackBtn = document.getElementById('stationBackBtn');
 const homeLink = document.getElementById('homeLink');
 let abortCtrl = null;
 let timer = null;
@@ -351,8 +374,191 @@ function renderVehicles(list) {
 	});
 }
 
+function renderStationItems(items) {
+	if (!items || items.length === 0) {
+		sDropdown.style.display = 'none';
+		sDropdown.innerHTML = '';
+		return;
+	}
+	sDropdown.innerHTML = items.map(s => {
+		const crs = s.crs || '';
+		const name = s.name || '';
+		return `
+			<div class="item" data-crs="${crs}">
+				<div class="line-1">
+					<span class="otn">${crs}</span>
+				</div>
+				<div class="line-2">${name}</div>
+			</div>`;
+	}).join('');
+	sDropdown.style.display = 'block';
+	Array.from(sDropdown.querySelectorAll('.item')).forEach(el => {
+		el.addEventListener('click', () => {
+			const crs = el.getAttribute('data-crs');
+			showStation(crs);
+			sDropdown.style.display = 'none';
+		});
+	});
+}
+
+async function searchStations(qs) {
+	if (abortCtrl) abortCtrl.abort();
+	abortCtrl = new AbortController();
+	const url = `${API_BASE}/api/v1/stations/autocomplete?q=${encodeURIComponent(qs)}&limit=10`;
+	try {
+		const res = await fetch(url, { signal: abortCtrl.signal });
+		if (!res.ok) throw new Error('HTTP ' + res.status);
+		const data = await res.json();
+		renderStationItems(data);
+	} catch (e) {
+		if (e.name !== 'AbortError') {
+			console.error(e);
+			renderStationItems([]);
+		}
+	}
+}
+
+async function loadStationBoard(crs) {
+	const url = `${API_BASE}/api/v1/stations/board?crs=${encodeURIComponent(crs)}&numRows=15&timeWindow=120`;
+	const res = await fetch(url);
+	if (!res.ok) throw new Error('Station board load failed');
+	return await res.json();
+}
+
+function formatTime(dateStr) {
+	if (!dateStr) return '';
+	const d = new Date(dateStr);
+	return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderStationBoard(data) {
+	const stationName = document.getElementById('stationName');
+	const stationCrs = document.getElementById('stationCrs');
+	const stationMessages = document.getElementById('stationMessages');
+	const stationServices = document.getElementById('stationServices');
+	
+	stationName.textContent = data.station.name || '';
+	stationCrs.textContent = data.station.crs || '';
+	
+	// Show NRCC messages if any
+	if (data.board.nrccMessages && data.board.nrccMessages.length > 0) {
+		stationMessages.style.display = 'block';
+		stationMessages.innerHTML = '<h3>Station Information</h3>' + 
+			data.board.nrccMessages.map(m => {
+				const severity = m.severity || 'Normal';
+				const color = severity === 'Severe' ? 'var(--danger)' : 
+							  severity === 'Major' ? '#f59e0b' : 
+							  'var(--accent)';
+				return `<div class="card" style="border-left: 3px solid ${color};">
+					<div style="font-weight:600; color:${color}; margin-bottom:4px;">${severity}</div>
+					<div style="font-size:14px;">${m.message || ''}</div>
+				</div>`;
+			}).join('');
+	} else {
+		stationMessages.style.display = 'none';
+	}
+	
+	// Render services
+	if (!data.services || data.services.length === 0) {
+		stationServices.innerHTML = '<div class="muted">No services found.</div>';
+		return;
+	}
+	
+	stationServices.innerHTML = data.services.map(svc => {
+		const trainId = svc.trainId || '';
+		const operator = svc.operator || '';
+		const platform = svc.platform || 'TBC';
+		const platformHidden = svc.platformIsHidden;
+		const cancelled = svc.isCancelled;
+		
+		const origins = (svc.origin || []).map(o => o.locationName).join(', ');
+		const destinations = (svc.destination || []).map(d => d.locationName).join(', ');
+		
+		const stdTime = formatTime(svc.std);
+		const etdTime = formatTime(svc.etd);
+		const staTime = formatTime(svc.sta);
+		const etaTime = formatTime(svc.eta);
+		
+		const calling = (svc.subsequentLocations || [])
+			.slice(0, 5)
+			.map(l => l.locationName)
+			.join(', ');
+		const callingText = calling ? `Calling at: ${calling}` : '';
+		
+		const hasDbData = svc.dbData != null;
+		const clickable = hasDbData && trainId && svc.dbData.serviceDate && svc.dbData.originStd;
+		
+		const statusColor = cancelled ? 'var(--danger)' : 'var(--text)';
+		const statusText = cancelled ? 'CANCELLED' : 
+						  etdTime && etdTime !== stdTime ? `Expected ${etdTime}` :
+						  etaTime && etaTime !== staTime ? `Expected ${etaTime}` :
+						  'On time';
+		
+		const platformDisplay = platformHidden ? '—' : platform;
+		
+		return `<div class="card ${clickable ? 'service-card-clickable' : ''}" 
+					${clickable ? `data-otn="${trainId}" data-date="${svc.dbData.serviceDate}" data-std="${svc.dbData.originStd}"` : ''}>
+			<div style="display:flex; justify-content:space-between; align-items:baseline;">
+				<div>
+					<span style="font-weight:700; font-size:16px;">${stdTime || staTime}</span>
+					<span class="muted" style="font-size:13px; margin-left:6px;">${operator}</span>
+				</div>
+				<div style="display:flex; gap:8px; align-items:center;">
+					<span style="font-size:13px; color:${statusColor};">${statusText}</span>
+					<span class="pill">Plat ${platformDisplay}</span>
+				</div>
+			</div>
+			<div style="margin-top:6px; font-size:14px;">
+				<div><strong>To:</strong> ${destinations}</div>
+				${origins ? `<div class="muted" style="font-size:13px;">From: ${origins}</div>` : ''}
+			</div>
+			${callingText ? `<div class="muted" style="font-size:13px; margin-top:4px;">${callingText}</div>` : ''}
+			${hasDbData ? `<div class="muted" style="font-size:12px; margin-top:6px;">Train ${trainId} ${clickable ? '(click for details)' : ''}</div>` : ''}
+		</div>`;
+	}).join('');
+	
+	// Add click handlers for services with DB data
+	Array.from(stationServices.querySelectorAll('.service-card-clickable')).forEach(card => {
+		card.style.cursor = 'pointer';
+		card.addEventListener('click', () => {
+			const otn = card.getAttribute('data-otn');
+			const date = card.getAttribute('data-date');
+			const std = card.getAttribute('data-std');
+			if (otn && date && std) {
+				showService(otn, date, std);
+			}
+		});
+		card.addEventListener('mouseenter', () => {
+			card.style.background = '#0f1a2a';
+		});
+		card.addEventListener('mouseleave', () => {
+			card.style.background = '#0e1520';
+		});
+	});
+}
+
+async function showStation(crs, push = true) {
+	searchPanel.style.display = 'none';
+	svcPanel.style.display = 'none';
+	stationPanel.style.display = 'block';
+	sDropdown.style.display = 'none';
+	if (push) {
+		const qs = `?station=${encodeURIComponent(crs)}`;
+		history.pushState({ station: crs }, '', `${qs}`);
+	}
+	document.getElementById('stationServices').innerHTML = '<div class="muted">Loading live departure board…</div>';
+	try {
+		const data = await loadStationBoard(crs);
+		renderStationBoard(data);
+	} catch (e) {
+		console.error(e);
+		document.getElementById('stationServices').innerHTML = '<div class="muted">Failed to load station board. Please check your National Rail API configuration.</div>';
+	}
+}
+
 function showSearch(replace = false) {
 	svcPanel.style.display = 'none';
+	stationPanel.style.display = 'none';
 	searchPanel.style.display = 'grid';
 	dropdown.style.display = 'none';
 	if (replace) {
@@ -362,6 +568,7 @@ function showSearch(replace = false) {
 
 async function showService(otn, date, std, push = true) {
 	searchPanel.style.display = 'none';
+	stationPanel.style.display = 'none';
 	svcPanel.style.display = 'block';
 	dropdown.style.display = 'none';
 	if (push) {
@@ -401,6 +608,22 @@ async function showService(otn, date, std, push = true) {
 			renderItems([]);
 		}
 	});
+	
+	sq.addEventListener('input', () => {
+		const val = sq.value.trim();
+		if (timer) clearTimeout(timer);
+		if (!val) {
+			renderStationItems([]);
+			return;
+		}
+		timer = setTimeout(() => searchStations(val), 180);
+	});
+	sq.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') {
+			renderStationItems([]);
+		}
+	});
+	
 	vq.addEventListener('input', () => {
 		const val = vq.value.trim();
 		if (timer) clearTimeout(timer);
@@ -421,6 +644,11 @@ async function showService(otn, date, std, push = true) {
 		e.preventDefault();
 		showSearch(true);
 	});
+	
+	stationBackBtn.addEventListener('click', (e) => {
+		e.preventDefault();
+		showSearch(true);
+	});
 
 	homeLink.addEventListener('click', (e) => {
 		e.preventDefault();
@@ -429,11 +657,14 @@ async function showService(otn, date, std, push = true) {
 
 	window.addEventListener('popstate', () => {
 		const qs = new URLSearchParams(location.search);
+		const station = qs.get('station') || '';
 		const veh = qs.get('veh') || '';
 		const otn = qs.get('otn') || '';
 		const date = qs.get('date') || '';
 		const std = qs.get('std') || '';
-		if (veh) {
+		if (station) {
+			showStation(station, /*push*/false);
+		} else if (veh) {
 			showVehicle(veh, /*push*/false);
 		} else if (otn && date && std) {
 			showService(otn, date, std, /*push*/false);
@@ -444,11 +675,14 @@ async function showService(otn, date, std, push = true) {
 
 	// Initial route
 	const qs = new URLSearchParams(location.search);
+	const station = qs.get('station') || '';
 	const veh = qs.get('veh') || '';
 	const otn = qs.get('otn') || '';
 	const date = qs.get('date') || '';
 	const std = qs.get('std') || '';
-	if (veh) {
+	if (station) {
+		showStation(station, /*push*/false);
+	} else if (veh) {
 		showVehicle(veh, /*push*/false);
 	} else if (otn && date && std) {
 		showService(otn, date, std, /*push*/false);
