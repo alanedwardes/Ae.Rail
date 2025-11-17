@@ -330,14 +330,16 @@ namespace Ae.Rail.Services
 					UpdatedAt = DateTime.UtcNow
 				};
 
-			if (veh.TryGetProperty("SpecificType", out var st)) vehicle.SpecificType = st.GetString();
-			if (veh.TryGetProperty("TypeOfVehicle", out var tov)) vehicle.TypeOfVehicle = tov.GetString();
-			if (veh.TryGetProperty("Cabs", out var cabs) && cabs.ValueKind == JsonValueKind.Number) vehicle.NumberOfCabs = cabs.GetInt32();
-			if (veh.TryGetProperty("NumberOfSeats", out var seats) && seats.ValueKind == JsonValueKind.Number) vehicle.NumberOfSeats = seats.GetInt32();
-			
-			ParseLength(veh, out vehicle.LengthUnit, out vehicle.LengthMm);
+		if (veh.TryGetProperty("SpecificType", out var st)) vehicle.SpecificType = st.GetString();
+		if (veh.TryGetProperty("TypeOfVehicle", out var tov)) vehicle.TypeOfVehicle = tov.GetString();
+		if (veh.TryGetProperty("Cabs", out var cabs) && cabs.ValueKind == JsonValueKind.Number) vehicle.NumberOfCabs = cabs.GetInt32();
+		if (veh.TryGetProperty("NumberOfSeats", out var seats) && seats.ValueKind == JsonValueKind.Number) vehicle.NumberOfSeats = seats.GetInt32();
+		
+		ParseLength(veh, out var lengthUnit, out var lengthMm);
+		vehicle.LengthUnit = lengthUnit;
+		vehicle.LengthMm = lengthMm;
 
-			if (veh.TryGetProperty("Weight", out var weight) && weight.ValueKind == JsonValueKind.Number) vehicle.Weight = weight.GetInt32();
+		if (veh.TryGetProperty("Weight", out var weight) && weight.ValueKind == JsonValueKind.Number) vehicle.Weight = weight.GetInt32();
 				if (veh.TryGetProperty("MaximumSpeed", out var maxSpeed) && maxSpeed.ValueKind == JsonValueKind.Number) vehicle.MaximumSpeed = maxSpeed.GetInt32();
 				if (veh.TryGetProperty("TrainBrakeType", out var tbt)) vehicle.TrainBrakeType = tbt.GetString();
 				if (veh.TryGetProperty("Livery", out var livery)) vehicle.Livery = livery.GetString();
@@ -453,14 +455,16 @@ namespace Ae.Rail.Services
 					UpdatedAt = DateTime.UtcNow
 				};
 
-			if (veh.TryGetProperty("SpecificType", out var st)) serviceVehicle.SpecificType = st.GetString();
-			if (veh.TryGetProperty("TypeOfVehicle", out var tov)) serviceVehicle.TypeOfVehicle = tov.GetString();
-			if (veh.TryGetProperty("Cabs", out var cabs) && cabs.ValueKind == JsonValueKind.Number) serviceVehicle.NumberOfCabs = cabs.GetInt32();
-			if (veh.TryGetProperty("NumberOfSeats", out var seats) && seats.ValueKind == JsonValueKind.Number) serviceVehicle.NumberOfSeats = seats.GetInt32();
-			
-			ParseLength(veh, out serviceVehicle.LengthUnit, out serviceVehicle.LengthMm);
+		if (veh.TryGetProperty("SpecificType", out var st)) serviceVehicle.SpecificType = st.GetString();
+		if (veh.TryGetProperty("TypeOfVehicle", out var tov)) serviceVehicle.TypeOfVehicle = tov.GetString();
+		if (veh.TryGetProperty("Cabs", out var cabs) && cabs.ValueKind == JsonValueKind.Number) serviceVehicle.NumberOfCabs = cabs.GetInt32();
+		if (veh.TryGetProperty("NumberOfSeats", out var seats) && seats.ValueKind == JsonValueKind.Number) serviceVehicle.NumberOfSeats = seats.GetInt32();
+		
+		ParseLength(veh, out var lengthUnit, out var lengthMm);
+		serviceVehicle.LengthUnit = lengthUnit;
+		serviceVehicle.LengthMm = lengthMm;
 
-			if (veh.TryGetProperty("Weight", out var weight) && weight.ValueKind == JsonValueKind.Number) serviceVehicle.Weight = weight.GetInt32();
+		if (veh.TryGetProperty("Weight", out var weight) && weight.ValueKind == JsonValueKind.Number) serviceVehicle.Weight = weight.GetInt32();
 				if (veh.TryGetProperty("MaximumSpeed", out var maxSpeed) && maxSpeed.ValueKind == JsonValueKind.Number) serviceVehicle.MaximumSpeed = maxSpeed.GetInt32();
 				if (veh.TryGetProperty("TrainBrakeType", out var tbt)) serviceVehicle.TrainBrakeType = tbt.GetString();
 				if (veh.TryGetProperty("Livery", out var livery)) serviceVehicle.Livery = livery.GetString();
