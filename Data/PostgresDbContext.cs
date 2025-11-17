@@ -7,9 +7,14 @@ namespace Ae.Rail.Data
 	public sealed class PostgresDbContext : DbContext
 	{
 		public DbSet<MessageEnvelope> MessageEnvelopes { get; set; }
-		public DbSet<TrainServiceView> TrainServices { get; set; }
-		public DbSet<VehicleView> Vehicles { get; set; }
-		public DbSet<ServiceVehicleView> ServiceVehicles { get; set; }
+		public DbSet<TrainService> TrainServices { get; set; }
+		public DbSet<Vehicle> Vehicles { get; set; }
+		public DbSet<ServiceVehicle> ServiceVehicles { get; set; }
+
+		// Views (legacy, for backward compatibility during migration)
+		public DbSet<TrainServiceView> TrainServiceViews { get; set; }
+		public DbSet<VehicleView> VehicleViews { get; set; }
+		public DbSet<ServiceVehicleView> ServiceVehicleViews { get; set; }
 
 		public PostgresDbContext(DbContextOptions<PostgresDbContext> options) : base(options)
 		{
@@ -17,15 +22,30 @@ namespace Ae.Rail.Data
 
 		protected override void OnModelCreating(ModelBuilder modelBuilder)
 		{
+			// Message envelopes (raw audit trail)
 			var env = modelBuilder.Entity<MessageEnvelope>();
 			env.ToTable("message_envelopes");
 			env.HasKey(x => x.Id);
 			env.Property(x => x.Id).HasColumnName("id");
 			env.Property(x => x.ReceivedAt).HasColumnName("received_at").HasColumnType("timestamp with time zone");
 			env.Property(x => x.Payload).HasColumnName("payload").HasColumnType("jsonb");
-			// Consider GIN index on payload if needed; created via migration
 
-			// Keyless view mapping for materialized view
+			// Train services table
+			var ts = modelBuilder.Entity<TrainService>();
+			ts.ToTable("train_services");
+			ts.HasKey(x => x.Id);
+
+			// Vehicles table
+			var v = modelBuilder.Entity<Vehicle>();
+			v.ToTable("vehicles");
+			v.HasKey(x => x.Id);
+
+			// Service vehicles table
+			var sv = modelBuilder.Entity<ServiceVehicle>();
+			sv.ToTable("service_vehicles");
+			sv.HasKey(x => x.Id);
+
+			// Legacy view mappings (kept for backward compatibility during migration)
 			var tsv = modelBuilder.Entity<TrainServiceView>();
 			tsv.HasNoKey();
 			tsv.ToView("trainservice_current");
@@ -47,7 +67,6 @@ namespace Ae.Rail.Data
 			tsv.Property(x => x.PowerType).HasColumnName("PowerType");
 			tsv.Property(x => x.LastUpdatedAt).HasColumnName("LastUpdatedAt");
 
-			// Vehicle MV mapping
 			var vv = modelBuilder.Entity<VehicleView>();
 			vv.HasNoKey();
 			vv.ToView("vehicle_current");
@@ -79,38 +98,37 @@ namespace Ae.Rail.Data
 			vv.Property(x => x.IsDrivingVehicle).HasColumnName("IsDrivingVehicle");
 			vv.Property(x => x.LastUpdatedAt).HasColumnName("LastUpdatedAt");
 
-			// Service-instance vehicles MV mapping
-			var sv = modelBuilder.Entity<ServiceVehicleView>();
-			sv.HasNoKey();
-			sv.ToView("service_vehicle_current");
-			sv.Property(x => x.OperationalTrainNumber).HasColumnName("OperationalTrainNumber");
-			sv.Property(x => x.ServiceDate).HasColumnName("ServiceDate");
-			sv.Property(x => x.OriginStd).HasColumnName("OriginStd");
-			sv.Property(x => x.VehicleId).HasColumnName("VehicleId");
-			sv.Property(x => x.SpecificType).HasColumnName("SpecificType");
-			sv.Property(x => x.TypeOfVehicle).HasColumnName("TypeOfVehicle");
-			sv.Property(x => x.NumberOfCabs).HasColumnName("NumberOfCabs");
-			sv.Property(x => x.NumberOfSeats).HasColumnName("NumberOfSeats");
-			sv.Property(x => x.LengthUnit).HasColumnName("LengthUnit");
-			sv.Property(x => x.LengthMm).HasColumnName("LengthMm");
-			sv.Property(x => x.Weight).HasColumnName("Weight");
-			sv.Property(x => x.MaximumSpeed).HasColumnName("MaximumSpeed");
-			sv.Property(x => x.TrainBrakeType).HasColumnName("TrainBrakeType");
-			sv.Property(x => x.Livery).HasColumnName("Livery");
-			sv.Property(x => x.Decor).HasColumnName("Decor");
-			sv.Property(x => x.VehicleStatus).HasColumnName("VehicleStatus");
-			sv.Property(x => x.RegisteredStatus).HasColumnName("RegisteredStatus");
-			sv.Property(x => x.RegisteredCategory).HasColumnName("RegisteredCategory");
-			sv.Property(x => x.DateRegistered).HasColumnName("DateRegistered");
-			sv.Property(x => x.DateEnteredService).HasColumnName("DateEnteredService");
-			sv.Property(x => x.ResourcePosition).HasColumnName("ResourcePosition");
-			sv.Property(x => x.PlannedResourceGroup).HasColumnName("PlannedResourceGroup");
-			sv.Property(x => x.ResourceGroupId).HasColumnName("ResourceGroupId");
-			sv.Property(x => x.FleetId).HasColumnName("FleetId");
-			sv.Property(x => x.TypeOfResource).HasColumnName("TypeOfResource");
-			sv.Property(x => x.IsLocomotive).HasColumnName("IsLocomotive");
-			sv.Property(x => x.ClassCode).HasColumnName("ClassCode");
-			sv.Property(x => x.LastUpdatedAt).HasColumnName("LastUpdatedAt");
+			var svv = modelBuilder.Entity<ServiceVehicleView>();
+			svv.HasNoKey();
+			svv.ToView("service_vehicle_current");
+			svv.Property(x => x.OperationalTrainNumber).HasColumnName("OperationalTrainNumber");
+			svv.Property(x => x.ServiceDate).HasColumnName("ServiceDate");
+			svv.Property(x => x.OriginStd).HasColumnName("OriginStd");
+			svv.Property(x => x.VehicleId).HasColumnName("VehicleId");
+			svv.Property(x => x.SpecificType).HasColumnName("SpecificType");
+			svv.Property(x => x.TypeOfVehicle).HasColumnName("TypeOfVehicle");
+			svv.Property(x => x.NumberOfCabs).HasColumnName("NumberOfCabs");
+			svv.Property(x => x.NumberOfSeats).HasColumnName("NumberOfSeats");
+			svv.Property(x => x.LengthUnit).HasColumnName("LengthUnit");
+			svv.Property(x => x.LengthMm).HasColumnName("LengthMm");
+			svv.Property(x => x.Weight).HasColumnName("Weight");
+			svv.Property(x => x.MaximumSpeed).HasColumnName("MaximumSpeed");
+			svv.Property(x => x.TrainBrakeType).HasColumnName("TrainBrakeType");
+			svv.Property(x => x.Livery).HasColumnName("Livery");
+			svv.Property(x => x.Decor).HasColumnName("Decor");
+			svv.Property(x => x.VehicleStatus).HasColumnName("VehicleStatus");
+			svv.Property(x => x.RegisteredStatus).HasColumnName("RegisteredStatus");
+			svv.Property(x => x.RegisteredCategory).HasColumnName("RegisteredCategory");
+			svv.Property(x => x.DateRegistered).HasColumnName("DateRegistered");
+			svv.Property(x => x.DateEnteredService).HasColumnName("DateEnteredService");
+			svv.Property(x => x.ResourcePosition).HasColumnName("ResourcePosition");
+			svv.Property(x => x.PlannedResourceGroup).HasColumnName("PlannedResourceGroup");
+			svv.Property(x => x.ResourceGroupId).HasColumnName("ResourceGroupId");
+			svv.Property(x => x.FleetId).HasColumnName("FleetId");
+			svv.Property(x => x.TypeOfResource).HasColumnName("TypeOfResource");
+			svv.Property(x => x.IsLocomotive).HasColumnName("IsLocomotive");
+			svv.Property(x => x.ClassCode).HasColumnName("ClassCode");
+			svv.Property(x => x.LastUpdatedAt).HasColumnName("LastUpdatedAt");
 		}
 	}
 }

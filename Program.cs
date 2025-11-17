@@ -22,8 +22,11 @@ builder.Services.AddDbContext<Ae.Rail.Data.PostgresDbContext>((sp, options) =>
 });
 
 builder.Services.AddScoped<Ae.Rail.Services.IPostgresRawEventWriter, Ae.Rail.Services.PostgresRawEventWriter>();
+builder.Services.AddScoped<Ae.Rail.Services.ITrainDataParser, Ae.Rail.Services.TrainDataParser>();
 builder.Services.AddHostedService<Ae.Rail.Services.TrainsConsumerService>();
-builder.Services.AddHostedService<Ae.Rail.Services.MvRefreshService>();
+builder.Services.AddHostedService<Ae.Rail.Services.ReprocessorService>();
+// Materialized view refresh service (DEPRECATED - replaced by real-time parsing)
+// builder.Services.AddHostedService<Ae.Rail.Services.MvRefreshService>();
 builder.Services.AddSingleton<Ae.Rail.Services.ITiplocLookup, Ae.Rail.Services.TiplocLookup>();
 builder.Services.AddSingleton<Ae.Rail.Services.IStationCodeLookup, Ae.Rail.Services.StationCodeLookup>();
 

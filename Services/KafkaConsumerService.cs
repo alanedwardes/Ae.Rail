@@ -14,7 +14,6 @@ using System.Threading.Tasks;
 using System.Text.Json;
 using System.Xml.Serialization;
 using Ae.Rail.Models.TafTsi;
-using Ae.Rail.Models;
 using System.IO;
 using System.Linq.Expressions;
 
@@ -151,14 +150,25 @@ namespace Ae.Rail.Services
         {
             using var scope = _serviceProvider.CreateScope();
 			var rawWriter = scope.ServiceProvider.GetRequiredService<IPostgresRawEventWriter>();
+            var parser = scope.ServiceProvider.GetRequiredService<ITrainDataParser>();
             var dbContext = scope.ServiceProvider.GetRequiredService<Ae.Rail.Data.PostgresDbContext>();
 
             try
             {
-				// Write raw Kafka message to Postgres
+				// Write raw Kafka message to Postgres (audit trail)
 				await rawWriter.WriteAsync(result, cancellationToken);
 
-                // No typed insert; envelopes are stored and MVs are materialized from payload jsonb
+                // Parse and write to structured tables (real-time)
+                try
+                {
+                    await parser.ParseAndSaveAsync(result.Message.Value, cancellationToken);
+                }
+                catch (Exception parseEx)
+                {
+                    _logger.LogWarning(parseEx, "Failed to parse message for structured tables (will continue): topic {Topic}, partition {Partition}, offset {Offset}",
+                        result.Topic, result.Partition, result.Offset);
+                    // Continue processing - raw message is saved, parsing can be retried via reprocessor
+                }
 
                 // Commit the offset after successfully saving/upserting to database
                 try
