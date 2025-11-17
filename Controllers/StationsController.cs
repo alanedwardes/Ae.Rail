@@ -239,6 +239,7 @@ namespace Ae.Rail.Controllers
 					rid = service.Rid,
 					uid = service.Uid,
 					rsid = service.Rsid,
+					sdd = service.Sdd,
 					@operator = service.Operator,
 					operatorCode = service.OperatorCode,
 					platform = service.Platform,

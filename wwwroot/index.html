@@ -486,7 +486,10 @@ function renderStationBoard(data) {
 		const callingText = calling ? `Calling at: ${calling}` : '';
 		
 		const hasDbData = svc.dbData != null;
-		const clickable = hasDbData && trainId && svc.dbData.serviceDate && svc.dbData.originStd;
+		// Use live service's own date/time for the link, not the DB record's
+		const serviceDate = svc.sdd ? new Date(svc.sdd).toISOString().split('T')[0] : null;
+		const serviceStd = svc.std ? formatTime(svc.std) : null;
+		const clickable = hasDbData && trainId && serviceDate && serviceStd;
 		
 		const statusColor = cancelled ? 'var(--danger)' : 'var(--text)';
 		const statusText = cancelled ? 'CANCELLED' : 
@@ -497,7 +500,7 @@ function renderStationBoard(data) {
 		const platformDisplay = platformHidden ? '—' : platform;
 		
 		return `<div class="card ${clickable ? 'service-card-clickable' : ''}" 
-					${clickable ? `data-otn="${trainId}" data-date="${svc.dbData.serviceDate}" data-std="${svc.dbData.originStd}"` : ''}>
+					${clickable ? `data-otn="${trainId}" data-date="${serviceDate}" data-std="${serviceStd}"` : ''}>
 			<div style="display:flex; justify-content:space-between; align-items:baseline;">
 				<div>
 					<span style="font-weight:700; font-size:16px;">${stdTime || staTime}</span>
