@@ -218,12 +218,19 @@ namespace Ae.Rail.Services
 							trainService.ToiCore = core.GetString();
 						if (toiFirst.TryGetProperty("Variant", out var variant))
 							trainService.ToiVariant = variant.GetString();
-						if (toiFirst.TryGetProperty("TimetableYear", out var ttYear))
+					if (toiFirst.TryGetProperty("TimetableYear", out var ttYear))
+					{
+						if (ttYear.ValueKind == JsonValueKind.Number)
+						{
+							trainService.ToiTimetableYear = ttYear.GetInt32();
+						}
+						else if (ttYear.ValueKind == JsonValueKind.String)
 						{
 							var ttYearStr = ttYear.GetString();
 							if (!string.IsNullOrEmpty(ttYearStr) && int.TryParse(ttYearStr, out var ttYearInt))
 								trainService.ToiTimetableYear = ttYearInt;
 						}
+					}
 						if (toiFirst.TryGetProperty("StartDate", out var startDate))
 						{
 							var startDateStr = startDate.GetString();

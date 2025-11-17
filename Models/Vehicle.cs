@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Ae.Rail.Models
 {
@@ -114,6 +115,8 @@ namespace Ae.Rail.Models
 		public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
 		// Alias for backwards compatibility with controllers
+		[NotMapped]
+		[JsonIgnore]
 		public DateTime LastUpdatedAt 
 		{
 			get => UpdatedAt;
