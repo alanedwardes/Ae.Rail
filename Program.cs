@@ -22,6 +22,7 @@ builder.Services.AddScoped<Ae.Rail.Services.IPostgresRawEventWriter, Ae.Rail.Ser
 builder.Services.AddHostedService<Ae.Rail.Services.TrainsConsumerService>();
 builder.Services.AddHostedService<Ae.Rail.Services.MvRefreshService>();
 builder.Services.AddSingleton<Ae.Rail.Services.ITiplocLookup, Ae.Rail.Services.TiplocLookup>();
+builder.Services.AddSingleton<Ae.Rail.Services.IStationCodeLookup, Ae.Rail.Services.StationCodeLookup>();
 
 var app = builder.Build();
 
