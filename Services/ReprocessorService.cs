@@ -54,42 +54,49 @@ namespace Ae.Rail.Services
 			}
 		}
 
-		private async Task<bool> ShouldReprocess(CancellationToken cancellationToken)
+	private async Task<bool> ShouldReprocess(CancellationToken cancellationToken)
+	{
+		using var scope = _serviceProvider.CreateScope();
+		var dbContext = scope.ServiceProvider.GetRequiredService<PostgresDbContext>();
+
+		var config = _configuration.GetSection("Reprocessor");
+
+		// Check if forced - DEFAULT TRUE
+		var forceReprocess = config.GetValue<bool?>("ForceReprocess") ?? true;
+		_logger.LogInformation("Reprocessor config: ForceReprocess={ForceReprocess}", forceReprocess);
+		
+		if (forceReprocess)
 		{
-			using var scope = _serviceProvider.CreateScope();
-			var dbContext = scope.ServiceProvider.GetRequiredService<PostgresDbContext>();
+			_logger.LogInformation("Reprocessor: Force reprocess is enabled");
+			return true;
+		}
 
-			var config = _configuration.GetSection("Reprocessor");
-
-			// Check if forced
-			var forceReprocess = config.GetValue<bool>("ForceReprocess");
-			if (forceReprocess)
-			{
-				_logger.LogInformation("Reprocessor: Force reprocess is enabled");
-				return true;
-			}
-
-			// Check if reprocess on startup is disabled
-			var runOnStartup = config.GetValue<bool?>("RunOnStartup");
-			if (runOnStartup == false)
-			{
-				return false;
-			}
-
-			// Auto-detect if tables are empty
-			var reprocessIfEmpty = config.GetValue<bool?>("ReprocessIfEmpty") ?? true;
-			if (reprocessIfEmpty)
-			{
-				var hasTrainServices = await dbContext.Set<Ae.Rail.Models.TrainService>().AnyAsync(cancellationToken);
-				if (!hasTrainServices)
-				{
-					_logger.LogInformation("Reprocessor: Train services table is empty, will reprocess");
-					return true;
-				}
-			}
-
+		// Check if reprocess on startup is disabled
+		var runOnStartup = config.GetValue<bool?>("RunOnStartup");
+		if (runOnStartup == false)
+		{
+			_logger.LogInformation("Reprocessor: RunOnStartup is disabled");
 			return false;
 		}
+
+		// Auto-detect if tables are empty
+		var reprocessIfEmpty = config.GetValue<bool?>("ReprocessIfEmpty") ?? true;
+		if (reprocessIfEmpty)
+		{
+			var hasTrainServices = await dbContext.Set<Ae.Rail.Models.TrainService>().AnyAsync(cancellationToken);
+			if (!hasTrainServices)
+			{
+				_logger.LogInformation("Reprocessor: Train services table is empty, will reprocess");
+				return true;
+			}
+			else
+			{
+				_logger.LogInformation("Reprocessor: Train services table has data, skipping");
+			}
+		}
+
+		return false;
+	}
 
 		private async Task ReprocessAllMessages(CancellationToken stoppingToken)
 		{
