@@ -19,7 +19,7 @@ namespace Ae.Rail.Models
 		public int? MaximumSpeed { get; set; }
 		public string TrainBrakeType { get; set; }
 		public string Livery { get; set; }
-		public string Decor { get; set; }
+		public string? Decor { get; set; }
 		public string VehicleStatus { get; set; }
 		public string RegisteredStatus { get; set; }
 		public string RegisteredCategory { get; set; }

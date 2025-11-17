@@ -231,7 +231,7 @@ namespace Ae.Rail.Models.TafTsi
         public string Livery { get; set; }
 
         [XmlElement("Decor")]
-        public string Decor { get; set; }
+		public string? Decor { get; set; }
 
         [XmlElement("SpecialCharacteristics")]
         public string SpecialCharacteristics { get; set; }
