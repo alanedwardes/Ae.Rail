@@ -63,25 +63,28 @@ namespace Ae.Rail.Services
 				if (string.IsNullOrEmpty(otn))
 					return false;
 
-				// Get start date
-				if (!payload.RootElement.TryGetProperty("TrainOperationalIdentification", out var toi))
-					return false;
+			// Get start date
+			if (!payload.RootElement.TryGetProperty("TrainOperationalIdentification", out var toi))
+				return false;
 
-				if (!toi.TryGetProperty("TransportOperationalIdentifiers", out var toiArray))
-					return false;
+			if (!toi.TryGetProperty("TransportOperationalIdentifiers", out var toiArray))
+				return false;
 
-				if (toiArray.GetArrayLength() == 0)
-					return false;
+			if (toiArray.GetArrayLength() == 0)
+				return false;
 
-				var toiFirst = toiArray[0];
-				if (!toiFirst.TryGetProperty("StartDate", out var startDateProp))
-					return false;
+			var toiFirst = toiArray[0];
+			if (!toiFirst.TryGetProperty("StartDate", out var startDateProp))
+				return false;
 
-				var startDateStr = startDateProp.GetString();
-				if (string.IsNullOrEmpty(startDateStr) || !DateTime.TryParse(startDateStr, out var startDate))
-					return false;
+			var startDateStr = startDateProp.GetString();
+			if (string.IsNullOrEmpty(startDateStr) || !DateTime.TryParse(startDateStr, out var startDate))
+				return false;
 
-				var serviceDate = startDate.ToString("yyyy-MM-dd");
+			// Ensure UTC for PostgreSQL timestamptz
+			startDate = DateTime.SpecifyKind(startDate, DateTimeKind.Utc);
+
+			var serviceDate = startDate.ToString("yyyy-MM-dd");
 
 				// Get allocation
 				if (!payload.RootElement.TryGetProperty("Allocation", out var allocations) || allocations.GetArrayLength() == 0)
@@ -93,11 +96,14 @@ namespace Ae.Rail.Services
 				if (!firstAllocation.TryGetProperty("TrainOriginDateTime", out var originDateTimeProp))
 					return false;
 
-				var originDateTimeStr = originDateTimeProp.GetString();
-				if (string.IsNullOrEmpty(originDateTimeStr) || !DateTime.TryParse(originDateTimeStr, out var originDateTime))
-					return false;
+			var originDateTimeStr = originDateTimeProp.GetString();
+			if (string.IsNullOrEmpty(originDateTimeStr) || !DateTime.TryParse(originDateTimeStr, out var originDateTime))
+				return false;
 
-				var originStd = originDateTime.ToString("HH:mm");
+			// Ensure UTC for PostgreSQL timestamptz
+			originDateTime = DateTime.SpecifyKind(originDateTime, DateTimeKind.Utc);
+
+			var originStd = originDateTime.ToString("HH:mm");
 
 				// Parse train service
 				var trainService = ParseTrainService(payload, otn, serviceDate, originStd, originDateTime);
@@ -153,7 +159,7 @@ namespace Ae.Rail.Services
 					var destTimeStr = destTimeProp.GetString();
 					if (!string.IsNullOrEmpty(destTimeStr) && DateTime.TryParse(destTimeStr, out var destTime))
 					{
-						trainService.TrainDestDateTime = destTime;
+						trainService.TrainDestDateTime = DateTime.SpecifyKind(destTime, DateTimeKind.Utc);
 					}
 				}
 
@@ -231,12 +237,12 @@ namespace Ae.Rail.Services
 								trainService.ToiTimetableYear = ttYearInt;
 						}
 					}
-						if (toiFirst.TryGetProperty("StartDate", out var startDate))
-						{
-							var startDateStr = startDate.GetString();
-							if (!string.IsNullOrEmpty(startDateStr) && DateTime.TryParse(startDateStr, out var sd))
-								trainService.ToiStartDate = sd;
-						}
+					if (toiFirst.TryGetProperty("StartDate", out var startDate))
+					{
+						var startDateStr = startDate.GetString();
+						if (!string.IsNullOrEmpty(startDateStr) && DateTime.TryParse(startDateStr, out var sd))
+							trainService.ToiStartDate = DateTime.SpecifyKind(sd, DateTimeKind.Utc);
+					}
 					}
 				}
 
@@ -339,9 +345,9 @@ namespace Ae.Rail.Services
 				if (veh.TryGetProperty("RegisteredCategory", out var rc)) vehicle.RegisteredCategory = rc.GetString();
 				
 				if (veh.TryGetProperty("DateRegistered", out var dr) && DateTime.TryParse(dr.GetString(), out var drDate))
-					vehicle.DateRegistered = drDate;
+					vehicle.DateRegistered = DateTime.SpecifyKind(drDate, DateTimeKind.Utc);
 				if (veh.TryGetProperty("DateEnteredService", out var des) && DateTime.TryParse(des.GetString(), out var desDate))
-					vehicle.DateEnteredService = desDate;
+					vehicle.DateEnteredService = DateTime.SpecifyKind(desDate, DateTimeKind.Utc);
 
 				if (veh.TryGetProperty("ResourcePosition", out var rp) && rp.ValueKind == JsonValueKind.Number)
 					vehicle.ResourcePosition = rp.GetInt32();
@@ -469,9 +475,9 @@ namespace Ae.Rail.Services
 				if (veh.TryGetProperty("RegisteredCategory", out var rc)) serviceVehicle.RegisteredCategory = rc.GetString();
 				
 				if (veh.TryGetProperty("DateRegistered", out var dr) && DateTime.TryParse(dr.GetString(), out var drDate))
-					serviceVehicle.DateRegistered = drDate;
+					serviceVehicle.DateRegistered = DateTime.SpecifyKind(drDate, DateTimeKind.Utc);
 				if (veh.TryGetProperty("DateEnteredService", out var des) && DateTime.TryParse(des.GetString(), out var desDate))
-					serviceVehicle.DateEnteredService = desDate;
+					serviceVehicle.DateEnteredService = DateTime.SpecifyKind(desDate, DateTimeKind.Utc);
 
 				if (veh.TryGetProperty("ResourcePosition", out var rp) && rp.ValueKind == JsonValueKind.Number)
 					serviceVehicle.ResourcePosition = rp.GetInt32();
