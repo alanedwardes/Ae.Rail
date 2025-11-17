@@ -1,0 +1,27 @@
+Open Government Licence v3.0 (OGL-UK-3.0)
+
+You are encouraged to use and re-use Information freely and flexibly, with only a few conditions.
+
+To view this licence, visit:
+https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/
+
+Attribution
+You must acknowledge the source of the Information by including any attribution statement specified by the Information Provider(s) and, where possible, provide a link to this licence. If no attribution statement is provided, you must use:
+“Contains public sector information licensed under the Open Government Licence v3.0.”
+
+Exemptions
+This licence does not cover:
+- personal data
+- logos, trademarks and military insignia
+- third-party rights that the Information Provider is not authorised to license
+- information subject to other intellectual property rights, including patents, design rights and database rights
+
+No warranty
+The Information is licensed ‘as is’ and the Information Provider excludes all representations, warranties, obligations and liabilities to the maximum extent permitted by law. The Information Provider is not liable for any errors or omissions in the Information and shall not be liable for any loss, injury or damage of any kind caused by its use.
+
+Governing law
+This licence is governed by the laws of England and Wales.
+
+SPDX-License-Identifier: OGL-UK-3.0
+
+

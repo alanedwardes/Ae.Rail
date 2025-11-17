@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Train Service Search</title>
+	<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+	<div class="header">
+		<div class="title">Train Service Search</div>
+	</div>
+	<div id="search" class="panel">
+		<div class="search-box">
+			<input id="q" class="search-input" type="text" placeholder="Try 'Kings Cross to Leeds' or '1D31'">
+			<div id="dropdown" class="dropdown" style="display:none;"></div>
+		</div>
+		<div class="hint">Use origin 'to' destination, or type an Operational Train Number (you can find these when selecting a train on <a href="https://map.signalbox.io/">map.signalbox.io</a>).</div>
+		<div class="section"></div>
+		<div class="section">
+			<h3>Vehicle Search</h3>
+			<div class="search-box">
+				<input id="vq" class="search-input" type="text" placeholder="Try a Vehicle ID like '91111'">
+				<div id="vDropdown" class="dropdown" style="display:none;"></div>
+			</div>
+			<div id="vresult" class="section"></div>
+		</div>
+	</div>
+	<div id="svc" class="panel" style="display:none;">
+		<div class="section" style="display:flex; justify-content:space-between; align-items:center;">
+			<h3 style="margin:0;">Service</h3>
+			<a id="backBtn" href="#" class="muted" style="font-size:13px;">← Back to search</a>
+		</div>
+		<div class="section">
+			<div class="kv">
+				<div class="muted">Operational Train Number</div><div id="otn" class="mono"></div>
+				<div class="muted">Service Date</div><div id="svcdate"></div>
+				<div class="muted">Origin STD</div><div id="std"></div>
+				<div class="muted">Origin</div><div id="origin"></div>
+				<div class="muted">Destination</div><div id="dest"></div>
+				<div class="muted">Classes</div><div id="classes"></div>
+				<div class="muted">Power</div><div id="power"></div>
+			</div>
+		</div>
+		<div class="section">
+			<h3>Vehicles</h3>
+			<div id="vehicles" class="list"></div>
+		</div>
+	</div>
+</div>
+
+<script>
+const API_BASE = 'https://trains.alanedwardes.com/';
+
+const q = document.getElementById('q');
+const dropdown = document.getElementById('dropdown');
+const vq = document.getElementById('vq');
+const vDropdown = document.getElementById('vDropdown');
+const vresult = document.getElementById('vresult');
+const searchPanel = document.getElementById('search');
+const svcPanel = document.getElementById('svc');
+const backBtn = document.getElementById('backBtn');
+let abortCtrl = null;
+let timer = null;
+
+function renderItems(items) {
+	if (!items || items.length === 0) {
+		dropdown.style.display = 'none';
+		dropdown.innerHTML = '';
+		return;
+	}
+	dropdown.innerHTML = items.map(it => {
+		const from = (it.originName || it.originTiploc || '').toString().trim();
+		const to = (it.destName || it.destTiploc || '').toString().trim();
+		const staVal = it.sta;
+		const sta = staVal ? `, STA ${staVal}` : '';
+		const otn = it.operationalTrainNumber || '';
+		const svcDate = it.serviceDate || '';
+		const std = it.originStd || '';
+		return `
+			<div class="item" data-otn="${otn}" data-date="${svcDate}" data-std="${std}">
+				<div class="line-1">
+					<span class="otn">${otn}</span>
+					<span class="date">${svcDate}</span>
+					<span class="pill">${std}${sta}</span>
+				</div>
+				<div class="line-2">${from} → ${to}</div>
+			</div>`;
+	}).join('');
+	dropdown.style.display = 'block';
+
+	Array.from(dropdown.querySelectorAll('.item')).forEach(el => {
+		el.addEventListener('click', () => {
+			const otn = el.getAttribute('data-otn');
+			const date = el.getAttribute('data-date');
+			const std = el.getAttribute('data-std');
+			showService(otn, date, std);
+		});
+	});
+}
+
+async function search(qs) {
+	if (abortCtrl) abortCtrl.abort();
+	abortCtrl = new AbortController();
+	const url = `${API_BASE}/api/v1/trains/autocomplete?q=${encodeURIComponent(qs)}&limit=10`;
+	try {
+		const res = await fetch(url, { signal: abortCtrl.signal });
+		if (!res.ok) throw new Error('HTTP ' + res.status);
+		const data = await res.json();
+		renderItems(data);
+	} catch (e) {
+		if (e.name !== 'AbortError') {
+			console.error(e);
+			renderItems([]);
+		}
+	}
+}
+
+function renderVehicleItems(items) {
+	if (!items || items.length === 0) {
+		vDropdown.style.display = 'none';
+		vDropdown.innerHTML = '';
+		return;
+	}
+	vDropdown.innerHTML = items.map(v => {
+		const vehId = v.vehicleId || '';
+		const cls = v.classCode ? `Class ${v.classCode}` : '';
+		const typ = v.typeOfVehicle || '';
+		return `
+			<div class="item" data-veh="${vehId}">
+				<div class="line-1">
+					<span class="otn">${vehId}</span>
+					<span class="date">${cls}</span>
+				</div>
+				<div class="line-2">${typ}</div>
+			</div>`;
+	}).join('');
+	vDropdown.style.display = 'block';
+	Array.from(vDropdown.querySelectorAll('.item')).forEach(el => {
+		el.addEventListener('click', () => {
+			const vehId = el.getAttribute('data-veh');
+			showVehicle(vehId);
+			vDropdown.style.display = 'none';
+		});
+	});
+}
+
+async function searchVehicles(qs) {
+	if (abortCtrl) abortCtrl.abort();
+	abortCtrl = new AbortController();
+	const url = `${API_BASE}/api/v1/trains/vehicles/autocomplete?q=${encodeURIComponent(qs)}&limit=10`;
+	try {
+		const res = await fetch(url, { signal: abortCtrl.signal });
+		if (!res.ok) throw new Error('HTTP ' + res.status);
+		const data = await res.json();
+		renderVehicleItems(data);
+	} catch (e) {
+		if (e.name !== 'AbortError') {
+			console.error(e);
+			renderVehicleItems([]);
+		}
+	}
+}
+
+function setText(id, val) {
+	document.getElementById(id).textContent = val || '';
+}
+
+function fmtPlace(name, tiploc) {
+	if (name && tiploc && name !== tiploc) return `${name} (${tiploc})`;
+	return name || tiploc || '';
+}
+
+function renderVehicleDetails(v) {
+	if (!v) {
+		vresult.innerHTML = '';
+		return;
+	}
+	const vehId = v.vehicleId || '(unknown vehicle)';
+	const clsVal = v.classCode;
+	const cls = clsVal ? ` Class ${clsVal}` : '';
+	const typeVal = v.typeOfVehicle;
+	const type = typeVal ? ` • Type ${typeVal}` : '';
+	const specType = v.specificType || '';
+	const maxSpeed = v.maximumSpeed || '';
+	const seats = v.numberOfSeats || '';
+	const weight = v.weight || '';
+	const brake = v.trainBrakeType || '';
+	const livery = v.livery || '';
+	const decor = v.decor || '';
+	const power = v.powerType || '';
+	const driv = v.isDrivingVehicle ? 'Yes' : (v.isDrivingVehicle === false ? 'No' : '');
+	vresult.innerHTML = `
+		<div class="card">
+			<div><strong>${vehId}</strong><span class="muted">${cls}${type}</span></div>
+			<div class="muted">${specType}</div>
+			<div class="kv" style="margin-top:6px;">
+				<div>Max Speed</div><div>${maxSpeed}</div>
+				<div>Seats</div><div>${seats}</div>
+				<div>Weight</div><div>${weight}</div>
+				<div>Brake</div><div>${brake}</div>
+				<div>Livery</div><div>${livery}</div>
+				<div>Decor</div><div>${decor}</div>
+				<div>Power</div><div>${power}</div>
+				<div>Driving Vehicle</div><div>${driv}</div>
+			</div>
+		</div>
+		<div class="section">
+			<h3>Recent services</h3>
+			<div id="vusage" class="list"><div class="muted">Loading…</div></div>
+		</div>
+	`;
+	loadVehicleUsage(v.vehicleId).then(items => {
+		renderVehicleUsage(items || []);
+	}).catch(() => {
+		const el = document.getElementById('vusage');
+		if (el) el.innerHTML = '<div class="muted">Failed to load recent services.</div>';
+	});
+}
+
+async function loadVehicleById(vehId) {
+	const url = `${API_BASE}/api/v1/trains/vehicles/by-id?VehicleId=${encodeURIComponent(vehId)}`;
+	const res = await fetch(url);
+	if (!res.ok) throw new Error('Vehicle load failed');
+	return await res.json();
+}
+
+async function loadVehicleUsage(vehId) {
+	const url = `${API_BASE}/api/v1/trains/vehicle-usage?VehicleId=${encodeURIComponent(vehId)}&limit=10`;
+	const res = await fetch(url);
+	if (!res.ok) throw new Error('Usage load failed');
+	return await res.json();
+}
+
+async function showVehicle(vehId, push = true) {
+	searchPanel.style.display = 'block';
+	svcPanel.style.display = 'none';
+	dropdown.style.display = 'none';
+	if (push) {
+		const qs = `?veh=${encodeURIComponent(vehId)}`;
+		history.pushState({ veh: vehId }, '', `${qs}`);
+	}
+	vresult.innerHTML = '<div class="muted">Loading…</div>';
+	try {
+		const v = await loadVehicleById(vehId);
+		renderVehicleDetails(v);
+	} catch (e) {
+		console.error(e);
+		vresult.innerHTML = '<div class="muted">Failed to load vehicle.</div>';
+	}
+}
+
+function renderVehicleUsage(items) {
+	const el = document.getElementById('vusage');
+	if (!el) return;
+	if (!items || items.length === 0) {
+		el.innerHTML = '<div class="muted">No recent services found.</div>';
+		return;
+	}
+	el.innerHTML = items.map(it => {
+		const from = (it.originName || it.originTiploc || '').toString().trim();
+		const to = (it.destName || it.destTiploc || '').toString().trim();
+		const staVal = it.sta;
+		const sta = staVal ? `, STA ${staVal}` : '';
+		const otn = it.operationalTrainNumber || '';
+		const svcDate = it.serviceDate || '';
+		const std = it.originStd || '';
+		return `
+			<div class="item" data-otn="${otn}" data-date="${svcDate}" data-std="${std}">
+				<div class="line-1">
+					<span class="otn">${otn}</span>
+					<span class="date">${svcDate}</span>
+					<span class="pill">${std}${sta}</span>
+				</div>
+				<div class="line-2">${from} → ${to}</div>
+			</div>`;
+	}).join('');
+	Array.from(el.querySelectorAll('.item')).forEach(node => {
+		node.addEventListener('click', () => {
+			const otn = node.getAttribute('data-otn');
+			const date = node.getAttribute('data-date');
+			const std = node.getAttribute('data-std');
+			showService(otn, date, std);
+		});
+	});
+}
+async function loadService(otn, date, std) {
+	const url = `${API_BASE}/api/v1/trains/consist-instance?OperationalTrainNumber=${encodeURIComponent(otn)}&ServiceDate=${encodeURIComponent(date)}&OriginStd=${encodeURIComponent(std)}`;
+	const res = await fetch(url);
+	if (!res.ok) throw new Error('Service load failed');
+	return await res.json();
+}
+
+async function loadVehicles(otn, date, std) {
+	const url = `${API_BASE}/api/v1/trains/consist-vehicles?OperationalTrainNumber=${encodeURIComponent(otn)}&ServiceDate=${encodeURIComponent(date)}&OriginStd=${encodeURIComponent(std)}`;
+	const res = await fetch(url);
+	if (!res.ok) throw new Error('Vehicles load failed');
+	return await res.json();
+}
+
+function renderVehicles(list) {
+	const el = document.getElementById('vehicles');
+	if (!list || list.length === 0) {
+		el.innerHTML = '<div class="muted">No vehicles found.</div>';
+		return;
+	}
+	el.innerHTML = list.map(v => {
+		const rpVal = v.resourcePosition;
+		const rp = (rpVal != null && rpVal !== '') ? `#${rpVal} ` : '';
+		const clsVal = v.classCode;
+		const cls = clsVal ? ` Class ${clsVal}` : '';
+		const typeVal = v.typeOfVehicle;
+		const type = typeVal ? ` • Type ${typeVal}` : '';
+		const vehId = v.vehicleId || '(unknown vehicle)';
+		const specType = v.specificType || '';
+		const maxSpeed = v.maximumSpeed || '';
+		const seats = v.numberOfSeats || '';
+		const weight = v.weight || '';
+		const brake = v.trainBrakeType || '';
+		const livery = v.livery || '';
+		const decor = v.decor || '';
+		return `<div class="card">
+			<div><strong>${rp}<a class="vehicle-link mono" href="?veh=${encodeURIComponent(vehId)}">${vehId}</a></strong><span class="muted">${cls}${type}</span></div>
+			<div class="muted">${specType}</div>
+			<div class="kv" style="margin-top:6px;">
+				<div>Max Speed</div><div>${maxSpeed}</div>
+				<div>Seats</div><div>${seats}</div>
+				<div>Weight</div><div>${weight}</div>
+				<div>Brake</div><div>${brake}</div>
+				<div>Livery</div><div>${livery}</div>
+				<div>Decor</div><div>${decor}</div>
+			</div>
+		</div>`;
+	}).join('');
+	Array.from(el.querySelectorAll('.vehicle-link')).forEach(a => {
+		a.addEventListener('click', (e) => {
+			e.preventDefault();
+			const vehId = a.textContent.trim();
+			showVehicle(vehId);
+		});
+	});
+}
+
+function showSearch(replace = false) {
+	svcPanel.style.display = 'none';
+	searchPanel.style.display = 'block';
+	dropdown.style.display = 'none';
+	if (replace) {
+		history.replaceState({}, '', location.pathname);
+	}
+}
+
+async function showService(otn, date, std, push = true) {
+	searchPanel.style.display = 'none';
+	svcPanel.style.display = 'block';
+	dropdown.style.display = 'none';
+	if (push) {
+		const qs = `?otn=${encodeURIComponent(otn)}&date=${encodeURIComponent(date)}&std=${encodeURIComponent(std)}`;
+		history.pushState({ otn, date, std }, '', `${qs}`);
+	}
+	document.getElementById('vehicles').innerHTML = '<div class="muted">Loading…</div>';
+	try {
+		const [svc, vehicles] = await Promise.all([loadService(otn, date, std), loadVehicles(otn, date, std)]);
+		setText('otn', svc.operationalTrainNumber);
+		setText('svcdate', svc.serviceDate);
+		setText('std', svc.originPlannedDepTime);
+		setText('origin', fmtPlace(svc.originName, svc.originTiploc));
+		setText('dest', fmtPlace(svc.destName, svc.destTiploc));
+		setText('classes', svc.railClasses || '');
+		setText('power', svc.powerType || '');
+		renderVehicles(vehicles);
+	} catch (e) {
+		console.error(e);
+		document.getElementById('vehicles').innerHTML = '<div class="muted">Failed to load service. Check API URL or parameters.</div>';
+	}
+}
+
+(async function init() {
+	q.addEventListener('input', () => {
+		const val = q.value.trim();
+		if (timer) clearTimeout(timer);
+		if (!val) {
+			renderItems([]);
+			return;
+		}
+		timer = setTimeout(() => search(val), 180);
+	});
+
+	q.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') {
+			renderItems([]);
+		}
+	});
+	vq.addEventListener('input', () => {
+		const val = vq.value.trim();
+		if (timer) clearTimeout(timer);
+		if (!val) {
+			renderVehicleItems([]);
+			vresult.innerHTML = '';
+			return;
+		}
+		timer = setTimeout(() => searchVehicles(val), 180);
+	});
+	vq.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') {
+			renderVehicleItems([]);
+		}
+	});
+
+	backBtn.addEventListener('click', (e) => {
+		e.preventDefault();
+		showSearch(true);
+	});
+
+	window.addEventListener('popstate', () => {
+		const qs = new URLSearchParams(location.search);
+		const veh = qs.get('veh') || '';
+		const otn = qs.get('otn') || '';
+		const date = qs.get('date') || '';
+		const std = qs.get('std') || '';
+		if (veh) {
+			showVehicle(veh, /*push*/false);
+		} else if (otn && date && std) {
+			showService(otn, date, std, /*push*/false);
+		} else {
+			showSearch(true);
+		}
+	});
+
+	// Initial route
+	const qs = new URLSearchParams(location.search);
+	const veh = qs.get('veh') || '';
+	const otn = qs.get('otn') || '';
+	const date = qs.get('date') || '';
+	const std = qs.get('std') || '';
+	if (veh) {
+		showVehicle(veh, /*push*/false);
+	} else if (otn && date && std) {
+		showService(otn, date, std, /*push*/false);
+	} else {
+		showSearch();
+	}
+})();
+</script>
+</body>
+</html>
+
+

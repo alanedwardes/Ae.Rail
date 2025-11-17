@@ -1,0 +1,481 @@
+using Ae.Rail.Data;
+using Ae.Rail.Services;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using System.Collections.Generic;
+
+namespace Ae.Rail.Controllers
+{
+	[Route("/api/v1/trains")]
+	public sealed class TrainsController : ControllerBase
+	{
+		private readonly ILogger<TrainsController> _logger;
+		private readonly PostgresDbContext _dbContext;
+			private readonly ITiplocLookup _tiplocLookup;
+
+			public TrainsController(ILogger<TrainsController> logger, PostgresDbContext dbContext, ITiplocLookup tiplocLookup)
+		{
+			_logger = logger;
+			_dbContext = dbContext;
+				_tiplocLookup = tiplocLookup;
+		}
+
+		[HttpGet]
+		public async Task<IActionResult> GetByOperationalTrainNumber([FromQuery(Name = "OperationalTrainNumber")] string operationalTrainNumber)
+		{
+			if (string.IsNullOrWhiteSpace(operationalTrainNumber))
+			{
+				return BadRequest("Query parameter 'OperationalTrainNumber' is required.");
+			}
+
+			try
+			{
+				var rawRecords = await _dbContext.TrainServices
+					.Where(r => r.OperationalTrainNumber == operationalTrainNumber)
+					.OrderByDescending(r => r.TrainOriginDateTime ?? DateTime.MinValue)
+					.Select(r => new
+					{
+						r.OperationalTrainNumber,
+						r.ServiceDate,
+						OriginPlannedDepTime = r.OriginStd,
+						r.OriginLocationPrimaryCode,
+						r.OriginLocationName,
+						r.DestLocationPrimaryCode,
+						r.DestLocationName,
+						r.RailClasses,
+						r.PowerType,
+						r.ToiCore,
+						r.ToiVariant,
+						r.ToiTimetableYear,
+						r.ToiStartDate,
+						r.TrainOriginDateTime,
+						r.TrainDestDateTime,
+						r.LastUpdatedAt
+					})
+					.ToListAsync();
+
+				var records = rawRecords.Select(x =>
+				{
+					_tiplocLookup.TryGetName(x.OriginLocationName, out var originResolved);
+					_tiplocLookup.TryGetName(x.DestLocationName, out var destResolved);
+					return new
+					{
+						x.OperationalTrainNumber,
+						x.ServiceDate,
+						x.OriginPlannedDepTime,
+						x.OriginLocationPrimaryCode,
+						x.OriginLocationName,
+						OriginTiploc = x.OriginLocationName,
+						OriginName = originResolved,
+						x.DestLocationPrimaryCode,
+						x.DestLocationName,
+						DestTiploc = x.DestLocationName,
+						DestName = destResolved,
+						x.RailClasses,
+						x.PowerType,
+						x.ToiCore,
+						x.ToiVariant,
+						x.ToiTimetableYear,
+						x.ToiStartDate,
+						x.TrainOriginDateTime,
+						x.TrainDestDateTime,
+						x.LastUpdatedAt
+					};
+				}).ToList();
+
+				return Ok(records);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Failed to retrieve train for OTN {OperationalTrainNumber}", operationalTrainNumber);
+				return StatusCode(500, "An error occurred while retrieving the train record.");
+			}
+		}
+
+		// GET /api/v1/trains/vehicles/autocomplete?q=91111&limit=10
+		[HttpGet("vehicles/autocomplete")]
+		public async Task<IActionResult> VehiclesAutocomplete([FromQuery(Name = "q")] string q, [FromQuery] int limit = 10)
+		{
+			try
+			{
+				if (limit <= 0) limit = 10;
+				if (limit > 50) limit = 50;
+
+				var baseQuery = _dbContext.Vehicles.AsNoTracking().AsQueryable();
+
+				if (!string.IsNullOrWhiteSpace(q))
+				{
+					var token = q.Trim();
+					baseQuery = baseQuery.Where(v =>
+						EF.Functions.Like(v.VehicleId ?? "", "%" + token + "%")
+						|| EF.Functions.Like(v.ClassCode ?? "", "%" + token + "%")
+						|| EF.Functions.Like(v.SpecificType ?? "", "%" + token + "%")
+						|| EF.Functions.Like(v.TypeOfVehicle ?? "", "%" + token + "%")
+					);
+				}
+
+				var results = await baseQuery
+					.OrderByDescending(v => v.IsLocomotive)
+					.ThenBy(v => v.VehicleId)
+					.Select(v => new
+					{
+						v.VehicleId,
+						v.ClassCode,
+						v.SpecificType,
+						v.TypeOfVehicle,
+						v.MaximumSpeed,
+						v.NumberOfSeats,
+						v.Weight,
+						v.TrainBrakeType,
+						v.Livery,
+						v.Decor,
+						v.PowerType,
+						v.IsLocomotive,
+						v.IsDrivingVehicle,
+						v.LastUpdatedAt
+					})
+					.Take(limit)
+					.ToListAsync();
+
+				return Ok(results);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Failed to execute vehicle autocomplete for query {Query}", q);
+				return StatusCode(500, "An error occurred while searching for vehicles.");
+			}
+		}
+
+		// GET /api/v1/trains/vehicles/by-id?VehicleId=91111
+		[HttpGet("vehicles/by-id")]
+		public async Task<IActionResult> VehicleById([FromQuery(Name = "VehicleId")] string vehicleId)
+		{
+			if (string.IsNullOrWhiteSpace(vehicleId))
+			{
+				return BadRequest("Query parameter 'VehicleId' is required.");
+			}
+
+			try
+			{
+				var v = await _dbContext.Vehicles.AsNoTracking()
+					.Where(x => x.VehicleId == vehicleId)
+					.Select(x => new
+					{
+						x.VehicleId,
+						x.ClassCode,
+						x.SpecificType,
+						x.TypeOfVehicle,
+						x.MaximumSpeed,
+						x.NumberOfSeats,
+						x.Weight,
+						x.TrainBrakeType,
+						x.Livery,
+						x.Decor,
+						x.PowerType,
+						x.IsLocomotive,
+						x.IsDrivingVehicle,
+						x.LastUpdatedAt
+					})
+					.FirstOrDefaultAsync();
+
+				if (v == null) return NotFound();
+				return Ok(v);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Failed to retrieve vehicle by id {VehicleId}", vehicleId);
+				return StatusCode(500, "An error occurred while retrieving the vehicle.");
+			}
+		}
+
+		// GET /api/v1/trains/vehicle-usage?VehicleId=91111&limit=10
+		[HttpGet("vehicle-usage")]
+		public async Task<IActionResult> GetVehicleUsage([FromQuery(Name = "VehicleId")] string vehicleId, [FromQuery] int limit = 10)
+		{
+			if (string.IsNullOrWhiteSpace(vehicleId))
+			{
+				return BadRequest("Query parameter 'VehicleId' is required.");
+			}
+
+			try
+			{
+				if (limit <= 0) limit = 10;
+				if (limit > 50) limit = 50;
+
+				// Join service vehicles to train services to get routing, times, etc.
+				var query =
+					from sv in _dbContext.ServiceVehicles.AsNoTracking()
+					where sv.VehicleId == vehicleId
+					join ts in _dbContext.TrainServices.AsNoTracking()
+						on new { sv.OperationalTrainNumber, sv.ServiceDate, sv.OriginStd }
+						equals new { ts.OperationalTrainNumber, ts.ServiceDate, ts.OriginStd }
+					select new
+					{
+						ts.OperationalTrainNumber,
+						ServiceDate = ts.ServiceDate,
+						OriginStd = ts.OriginStd,
+						Sta = ts.TrainDestDateTime.HasValue ? ts.TrainDestDateTime.Value.ToString("HH:mm") : null,
+						OriginTiploc = ts.OriginLocationName,
+						DestTiploc = ts.DestLocationName,
+						ts.TrainOriginDateTime,
+						ts.TrainDestDateTime
+					};
+
+				// Order by actual origin datetime when available, else by date/time strings
+				var raw = await query
+					.OrderByDescending(x => x.TrainOriginDateTime ?? DateTime.MinValue)
+					.ThenByDescending(x => x.ServiceDate)
+					.ThenByDescending(x => x.OriginStd)
+					.Take(limit)
+					.ToListAsync();
+
+				var results = raw.Select(x =>
+				{
+					_tiplocLookup.TryGetName(x.OriginTiploc, out var originName);
+					_tiplocLookup.TryGetName(x.DestTiploc, out var destName);
+					return new
+					{
+						x.OperationalTrainNumber,
+						x.ServiceDate,
+						x.OriginStd,
+						x.Sta,
+						x.OriginTiploc,
+						OriginName = originName,
+						x.DestTiploc,
+						DestName = destName,
+						x.TrainOriginDateTime,
+						x.TrainDestDateTime
+					};
+				}).ToList();
+
+				return Ok(results);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Failed to retrieve vehicle usage for {VehicleId}", vehicleId);
+				return StatusCode(500, "An error occurred while retrieving vehicle usage.");
+			}
+		}
+
+		// GET /api/v1/trains/consist-instance?OperationalTrainNumber=1D31&ServiceDate=2025-11-09&OriginStd=20:45
+		[HttpGet("consist-instance")]
+		public async Task<IActionResult> GetConsistByInstance(
+			[FromQuery(Name = "OperationalTrainNumber")] string operationalTrainNumber,
+			[FromQuery(Name = "ServiceDate")] string serviceDate,
+			[FromQuery(Name = "OriginStd")] string originStd)
+		{
+			if (string.IsNullOrWhiteSpace(operationalTrainNumber) ||
+				string.IsNullOrWhiteSpace(serviceDate) ||
+				string.IsNullOrWhiteSpace(originStd))
+			{
+				return BadRequest("Query parameters 'OperationalTrainNumber', 'ServiceDate' (yyyy-MM-dd) and 'OriginStd' (HH:mm) are required.");
+			}
+
+			try
+			{
+				var record = await _dbContext.TrainServices
+					.Where(r =>
+						r.OperationalTrainNumber == operationalTrainNumber &&
+						r.ServiceDate == serviceDate &&
+						r.OriginStd == originStd)
+					.OrderByDescending(r => r.TrainOriginDateTime ?? DateTime.MinValue)
+					.FirstOrDefaultAsync();
+
+				if (record == null)
+				{
+					return NotFound();
+				}
+
+				var payload = new
+				{
+					record.OperationalTrainNumber,
+					record.ServiceDate,
+					OriginPlannedDepTime = record.OriginStd,
+					record.OriginLocationPrimaryCode,
+					record.OriginLocationName,
+					OriginTiploc = record.OriginLocationName,
+					OriginName = (_tiplocLookup.TryGetName(record.OriginLocationName, out var originResolved) ? originResolved : null),
+					record.DestLocationPrimaryCode,
+					record.DestLocationName,
+					DestTiploc = record.DestLocationName,
+					DestName = (_tiplocLookup.TryGetName(record.DestLocationName, out var destResolved) ? destResolved : null),
+					record.RailClasses,
+					record.PowerType,
+					record.ToiCore,
+					record.ToiVariant,
+					record.ToiTimetableYear,
+					record.ToiStartDate,
+					record.TrainOriginDateTime,
+					record.TrainDestDateTime
+				};
+
+				return Ok(payload);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Failed to retrieve consist instance for OTN {OperationalTrainNumber} on {ServiceDate} at {OriginStd}", operationalTrainNumber, serviceDate, originStd);
+				return StatusCode(500, "An error occurred while retrieving the consist record.");
+			}
+		}
+
+		// GET /api/v1/trains/autocomplete?q=Kings to Leeds&limit=10
+		[HttpGet("autocomplete")]
+		public async Task<IActionResult> Autocomplete([FromQuery(Name = "q")] string q, [FromQuery] int limit = 10)
+		{
+			try
+			{
+				if (limit <= 0) limit = 10;
+				if (limit > 50) limit = 50;
+
+				var baseQuery = _dbContext.TrainServices.AsNoTracking().AsQueryable();
+
+				if (!string.IsNullOrWhiteSpace(q))
+				{
+					var tokens = q.Split(new[] { " to " }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+					if (tokens.Length == 2)
+					{
+						var originToken = tokens[0];
+						var destToken = tokens[1];
+
+						var originCodes = _tiplocLookup.FindCodesByNameContains(originToken);
+						var destCodes = _tiplocLookup.FindCodesByNameContains(destToken);
+
+						baseQuery = baseQuery.Where(r =>
+							(
+								EF.Functions.Like(r.OriginLocationName ?? "", "%" + originToken + "%")
+								|| (originCodes.Count > 0 && originCodes.Contains(r.OriginLocationName))
+							)
+							&&
+							(
+								EF.Functions.Like(r.DestLocationName ?? "", "%" + destToken + "%")
+								|| (destCodes.Count > 0 && destCodes.Contains(r.DestLocationName))
+							)
+						);
+					}
+					else
+					{
+						var token = q.Trim();
+
+						var tokenCodes = _tiplocLookup.FindCodesByNameContains(token);
+
+						baseQuery = baseQuery.Where(r =>
+							EF.Functions.Like(r.OperationalTrainNumber ?? "", "%" + token + "%")
+							|| EF.Functions.Like(r.OriginLocationName ?? "", "%" + token + "%")
+							|| EF.Functions.Like(r.DestLocationName ?? "", "%" + token + "%")
+							|| (tokenCodes.Count > 0 && tokenCodes.Contains(r.OriginLocationName))
+							|| (tokenCodes.Count > 0 && tokenCodes.Contains(r.DestLocationName))
+						);
+					}
+				}
+
+				// MV is already deduped by (OTN, ServiceDate, OriginStd) keeping latest by received_at
+				var raw = await baseQuery
+					.OrderByDescending(r => r.TrainOriginDateTime ?? DateTime.MinValue)
+					.Select(r => new
+					{
+						r.OperationalTrainNumber,
+						ServiceDate = r.ServiceDate,
+						OriginStd = r.OriginStd,
+						Sta = r.TrainDestDateTime.HasValue ? r.TrainDestDateTime.Value.ToString("HH:mm") : null,
+						OriginTiploc = r.OriginLocationName,
+						DestTiploc = r.DestLocationName
+					})
+					.Take(limit)
+					.ToListAsync();
+
+				var results = raw.Select(x =>
+				{
+					_tiplocLookup.TryGetName(x.OriginTiploc, out var originName);
+					_tiplocLookup.TryGetName(x.DestTiploc, out var destName);
+					return new
+					{
+						x.OperationalTrainNumber,
+						x.ServiceDate,
+						x.OriginStd,
+						x.Sta,
+						x.OriginTiploc,
+						OriginName = originName,
+						x.DestTiploc,
+						DestName = destName
+					};
+				}).ToList();
+
+				return Ok(results);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Failed to execute autocomplete for query {Query}", q);
+				return StatusCode(500, "An error occurred while searching for services.");
+			}
+		}
+
+		// GET /api/v1/trains/consist-vehicles?OperationalTrainNumber=1D31&ServiceDate=2025-11-09&OriginStd=20:45
+		[HttpGet("consist-vehicles")]
+		public async Task<IActionResult> GetConsistVehicles(
+			[FromQuery(Name = "OperationalTrainNumber")] string operationalTrainNumber,
+			[FromQuery(Name = "ServiceDate")] string serviceDate,
+			[FromQuery(Name = "OriginStd")] string originStd)
+		{
+			if (string.IsNullOrWhiteSpace(operationalTrainNumber) ||
+				string.IsNullOrWhiteSpace(serviceDate) ||
+				string.IsNullOrWhiteSpace(originStd))
+			{
+				return BadRequest("Query parameters 'OperationalTrainNumber', 'ServiceDate' (yyyy-MM-dd) and 'OriginStd' (HH:mm) are required.");
+			}
+
+			try
+			{
+				var vehicles = await _dbContext.ServiceVehicles
+					.AsNoTracking()
+					.Where(v => v.OperationalTrainNumber == operationalTrainNumber
+						&& v.ServiceDate == serviceDate
+						&& v.OriginStd == originStd)
+					.OrderBy(v => v.ResourcePosition ?? int.MaxValue)
+					.ThenBy(v => v.VehicleId)
+					.Select(v => new
+					{
+						v.VehicleId,
+						v.SpecificType,
+						v.TypeOfVehicle,
+						v.NumberOfCabs,
+						v.NumberOfSeats,
+						v.LengthUnit,
+						v.LengthMm,
+						v.Weight,
+						v.MaximumSpeed,
+						v.TrainBrakeType,
+						v.Livery,
+						v.Decor,
+						v.VehicleStatus,
+						v.RegisteredStatus,
+						v.RegisteredCategory,
+						v.DateRegistered,
+						v.DateEnteredService,
+						v.ResourcePosition,
+						v.PlannedResourceGroup,
+						v.ResourceGroupId,
+						v.FleetId,
+						v.TypeOfResource,
+						v.IsLocomotive,
+						v.ClassCode
+					})
+					.ToListAsync();
+
+				return Ok(vehicles);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Failed to retrieve vehicles for OTN {OperationalTrainNumber} on {ServiceDate} at {OriginStd}", operationalTrainNumber, serviceDate, originStd);
+				return StatusCode(500, "An error occurred while retrieving vehicles for the service instance.");
+			}
+		}
+	}
+}
+
+
