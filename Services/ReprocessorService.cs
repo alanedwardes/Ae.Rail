@@ -105,7 +105,7 @@ namespace Ae.Rail.Services
 			var parser = scope.ServiceProvider.GetRequiredService<ITrainDataParser>();
 
 			var batchSize = _configuration.GetValue<int?>("Reprocessor:BatchSize") ?? 1000;
-			var saveBatchSize = 100; // Save every 100 messages for speed
+			var saveBatchSize = 1000; // Save every 1000 messages for speed (keeps more in change tracker)
 
 			// Get total count
 			var totalCount = await dbContext.MessageEnvelopes.CountAsync(stoppingToken);
