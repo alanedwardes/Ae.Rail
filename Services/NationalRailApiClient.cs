@@ -96,7 +96,7 @@ namespace Ae.Rail.Services
 					queryParams.Add($"getNonPassengerServices={getNonPassengerServices.Value.ToString().ToLowerInvariant()}");
 
 				var queryString = queryParams.Count > 0 ? "?" + string.Join("&", queryParams) : string.Empty;
-				var requestUri = $"/api/20220120/GetArrDepBoardWithDetails/{Uri.EscapeDataString(crs)}/{Uri.EscapeDataString(timeString)}{queryString}";
+				var requestUri = $"api/20220120/GetArrDepBoardWithDetails/{Uri.EscapeDataString(crs)}/{Uri.EscapeDataString(timeString)}{queryString}";
 
 				_logger.LogDebug("Calling National Rail API: {RequestUri}", requestUri);
 
