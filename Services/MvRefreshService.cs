@@ -42,32 +42,32 @@ namespace Ae.Rail.Services
 
 					if (maxReceivedAt > lastMaxReceivedAt)
 					{
+					try
+					{
+						await db.Database.ExecuteSqlRawAsync("refresh materialized view trainservice_v1;", stoppingToken);
+						_logger.LogDebug("Refreshed materialized view trainservice_v1 at {TimeUtc}", DateTime.UtcNow);
+
 						try
 						{
-							await db.Database.ExecuteSqlRawAsync("refresh materialized view concurrently trainservice_v1;", stoppingToken);
-							_logger.LogDebug("Refreshed materialized view trainservice_v1 at {TimeUtc}", DateTime.UtcNow);
-
-							try
-							{
-								await db.Database.ExecuteSqlRawAsync("refresh materialized view concurrently vehicle_v1;", stoppingToken);
-								_logger.LogDebug("Refreshed materialized view vehicle_v1 at {TimeUtc}", DateTime.UtcNow);
-							}
-							catch (Exception ex2)
-							{
-								_logger.LogWarning(ex2, "Failed to refresh materialized view vehicle_v1 (will retry)");
-							}
-
-							try
-							{
-								await db.Database.ExecuteSqlRawAsync("refresh materialized view concurrently service_vehicle_v1;", stoppingToken);
-								_logger.LogDebug("Refreshed materialized view service_vehicle_v1 at {TimeUtc}", DateTime.UtcNow);
-							}
-							catch (Exception ex3)
-							{
-								_logger.LogWarning(ex3, "Failed to refresh materialized view service_vehicle_v1 (will retry)");
-							}
-							lastMaxReceivedAt = maxReceivedAt;
+							await db.Database.ExecuteSqlRawAsync("refresh materialized view vehicle_v1;", stoppingToken);
+							_logger.LogDebug("Refreshed materialized view vehicle_v1 at {TimeUtc}", DateTime.UtcNow);
 						}
+						catch (Exception ex2)
+						{
+							_logger.LogWarning(ex2, "Failed to refresh materialized view vehicle_v1 (will retry)");
+						}
+
+						try
+						{
+							await db.Database.ExecuteSqlRawAsync("refresh materialized view service_vehicle_v1;", stoppingToken);
+							_logger.LogDebug("Refreshed materialized view service_vehicle_v1 at {TimeUtc}", DateTime.UtcNow);
+						}
+						catch (Exception ex3)
+						{
+							_logger.LogWarning(ex3, "Failed to refresh materialized view service_vehicle_v1 (will retry)");
+						}
+						lastMaxReceivedAt = maxReceivedAt;
+					}
 						catch (Exception ex)
 						{
 							_logger.LogWarning(ex, "Failed to refresh materialized view trainservice_v1 (will retry)");

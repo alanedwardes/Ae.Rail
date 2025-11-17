@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +27,46 @@ builder.Services.AddHostedService<Ae.Rail.Services.MvRefreshService>();
 builder.Services.AddSingleton<Ae.Rail.Services.ITiplocLookup, Ae.Rail.Services.TiplocLookup>();
 builder.Services.AddSingleton<Ae.Rail.Services.IStationCodeLookup, Ae.Rail.Services.StationCodeLookup>();
 
+// Configure forwarded headers to read X-Forwarded-For from proxy
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+	options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+	options.KnownNetworks.Clear();
+	options.KnownProxies.Clear();
+});
+
+// Configure rate limiting by IP address
+builder.Services.AddRateLimiter(options =>
+{
+	options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+	
+	// Add a fixed window rate limiter for IP addresses
+	options.AddFixedWindowLimiter("fixed", limiterOptions =>
+	{
+		limiterOptions.PermitLimit = 100; // 100 requests
+		limiterOptions.Window = TimeSpan.FromMinutes(1); // per minute
+		limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+		limiterOptions.QueueLimit = 0; // No queue, reject immediately when limit is exceeded
+	});
+	
+	// Global rate limiter that partitions by IP address
+	options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+	{
+		// Get the client IP address (respects X-Forwarded-For)
+		var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+		
+		return RateLimitPartition.GetFixedWindowLimiter(
+			partitionKey: ipAddress,
+			factory: _ => new FixedWindowRateLimiterOptions
+			{
+				PermitLimit = 100, // 100 requests
+				Window = TimeSpan.FromMinutes(1), // per minute
+				QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+				QueueLimit = 0
+			});
+	});
+});
+
 // Register National Rail API Client
 builder.Services.AddHttpClient<Ae.Rail.Services.INationalRailApiClient, Ae.Rail.Services.NationalRailApiClient>((sp, client) =>
 {
@@ -43,6 +86,12 @@ using (var scope = app.Services.CreateScope())
 	var db = scope.ServiceProvider.GetRequiredService<Ae.Rail.Data.PostgresDbContext>();
 	db.Database.Migrate();
 }
+
+// IMPORTANT: UseForwardedHeaders must be called before other middleware
+app.UseForwardedHeaders();
+
+// Enable rate limiting
+app.UseRateLimiter();
 
 app.UseStaticFiles();
 
