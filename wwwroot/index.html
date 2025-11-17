@@ -3,27 +3,32 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>Train Service Search</title>
+	<title>Train Information</title>
 	<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="container">
 	<div class="header">
-		<div class="title">Train Service Search</div>
+		<div class="title">Train Information</div>
 	</div>
-	<div id="search" class="panel">
-		<div class="search-box">
-			<input id="q" class="search-input" type="text" placeholder="Try 'Kings Cross to Leeds' or '1D31'">
-			<div id="dropdown" class="dropdown" style="display:none;"></div>
+	<div id="search" class="search-panels">
+		<!-- Service Search Panel -->
+		<div class="panel">
+			<h2 class="panel-title">Service Search</h2>
+			<div class="search-box">
+				<input id="q" class="search-input" type="text" placeholder="Try 'Kings Cross to Leeds' or '1D31'">
+				<div id="dropdown" class="dropdown" style="display:none;"></div>
+			</div>
+			<div class="hint">Use origin 'to' destination, or type an Operational Train Number (you can find these when selecting a train on <a href="https://map.signalbox.io/">map.signalbox.io</a>).</div>
 		</div>
-		<div class="hint">Use origin 'to' destination, or type an Operational Train Number (you can find these when selecting a train on <a href="https://map.signalbox.io/">map.signalbox.io</a>).</div>
-		<div class="section"></div>
-		<div class="section">
-			<h3>Vehicle Search</h3>
+		<!-- Vehicle Search Panel -->
+		<div class="panel">
+			<h2 class="panel-title">Vehicle Search</h2>
 			<div class="search-box">
 				<input id="vq" class="search-input" type="text" placeholder="Try a Vehicle ID like '91111'">
 				<div id="vDropdown" class="dropdown" style="display:none;"></div>
 			</div>
+			<div class="hint">Search for a specific railway vehicle by its identification number.</div>
 			<div id="vresult" class="section"></div>
 		</div>
 	</div>
@@ -47,6 +52,9 @@
 			<h3>Vehicles</h3>
 			<div id="vehicles" class="list"></div>
 		</div>
+	</div>
+	<div class="disclaimer">
+		Data is sourced from <a href="https://raildata.org.uk/" target="_blank" rel="noopener noreferrer">raildata.org.uk</a>. This is not an official website.
 	</div>
 </div>
 
@@ -234,7 +242,7 @@ async function loadVehicleUsage(vehId) {
 }
 
 async function showVehicle(vehId, push = true) {
-	searchPanel.style.display = 'block';
+	searchPanel.style.display = 'grid';
 	svcPanel.style.display = 'none';
 	dropdown.style.display = 'none';
 	if (push) {
@@ -344,7 +352,7 @@ function renderVehicles(list) {
 
 function showSearch(replace = false) {
 	svcPanel.style.display = 'none';
-	searchPanel.style.display = 'block';
+	searchPanel.style.display = 'grid';
 	dropdown.style.display = 'none';
 	if (replace) {
 		history.replaceState({}, '', location.pathname);
