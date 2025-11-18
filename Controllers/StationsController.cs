@@ -157,60 +157,82 @@ namespace Ae.Rail.Controllers
 			}
 		}
 
-		private async Task<List<object>> EnrichServicesWithDbData(List<Models.NationalRail.ServiceItemWithLocations>? services)
+	private async Task<List<object>> EnrichServicesWithDbData(List<Models.NationalRail.ServiceItemWithLocations>? services)
+	{
+		if (services == null || services.Count == 0)
 		{
-			if (services == null || services.Count == 0)
-			{
-				return new List<object>();
-			}
+			return new List<object>();
+		}
 
-			var result = new List<object>();
+		var result = new List<object>();
 
-			// Get all train IDs to look up in one query
-			var trainIds = services
-				.Where(s => !string.IsNullOrWhiteSpace(s.TrainId))
-				.Select(s => s.TrainId!)
-				.Distinct()
-				.ToList();
+		// Build lookup keys: (TrainId, ServiceDate, OriginStd)
+		var lookupKeys = new List<(string TrainId, string ServiceDate, string OriginStd)>();
+		
+		foreach (var service in services)
+		{
+			if (string.IsNullOrWhiteSpace(service.TrainId))
+				continue;
 
-			// Batch lookup in database
-			Dictionary<string, object> dbLookup = new();
-			if (trainIds.Any())
-			{
-				var dbServices = await _dbContext.TrainServices
-					.Where(ts => trainIds.Contains(ts.OperationalTrainNumber))
-					.Select(ts => new
-					{
-						ts.OperationalTrainNumber,
-						ts.ServiceDate,
-						ts.OriginStd,
-						ts.OriginLocationName,
-						ts.DestLocationName,
-						ts.RailClasses,
-						ts.PowerType,
-						ts.TrainOriginDateTime,
-						ts.TrainDestDateTime
-					})
-					.ToListAsync();
+			// Extract service date
+			var serviceDate = service.Sdd?.ToString("yyyy-MM-dd");
+			if (string.IsNullOrEmpty(serviceDate))
+				continue;
 
-				// Index by OperationalTrainNumber (may have multiple entries for same train on different dates)
-				foreach (var dbService in dbServices)
+			// Extract origin STD from PreviousLocations
+			var originStd = GetOriginStdFromService(service);
+			if (string.IsNullOrEmpty(originStd))
+				continue;
+
+			lookupKeys.Add((service.TrainId, serviceDate, originStd));
+		}
+
+		// Batch lookup in database using the three-part key
+		Dictionary<string, object> dbLookup = new();
+		if (lookupKeys.Any())
+		{
+			var trainIds = lookupKeys.Select(k => k.TrainId).Distinct().ToList();
+			
+			var dbServices = await _dbContext.TrainServices
+				.Where(ts => trainIds.Contains(ts.OperationalTrainNumber))
+				.Select(ts => new
 				{
-					if (!dbLookup.ContainsKey(dbService.OperationalTrainNumber))
-					{
-						dbLookup[dbService.OperationalTrainNumber] = dbService;
-					}
+					ts.OperationalTrainNumber,
+					ts.ServiceDate,
+					ts.OriginStd,
+					ts.OriginLocationName,
+					ts.DestLocationName,
+					ts.RailClasses,
+					ts.PowerType,
+					ts.TrainOriginDateTime,
+					ts.TrainDestDateTime
+				})
+				.ToListAsync();
+
+			// Index by (OTN, ServiceDate, OriginStd) composite key
+			foreach (var dbService in dbServices)
+			{
+				var key = $"{dbService.OperationalTrainNumber}|{dbService.ServiceDate}|{dbService.OriginStd}";
+				dbLookup[key] = dbService;
+			}
+		}
+
+		// Enrich each service
+		foreach (var service in services)
+		{
+			object? dbData = null;
+			
+			if (!string.IsNullOrWhiteSpace(service.TrainId) && service.Sdd.HasValue)
+			{
+				var serviceDate = service.Sdd.Value.ToString("yyyy-MM-dd");
+				var originStd = GetOriginStdFromService(service);
+				
+				if (!string.IsNullOrEmpty(originStd))
+				{
+					var key = $"{service.TrainId}|{serviceDate}|{originStd}";
+					dbLookup.TryGetValue(key, out dbData);
 				}
 			}
-
-			// Enrich each service
-			foreach (var service in services)
-			{
-				object? dbData = null;
-				if (!string.IsNullOrWhiteSpace(service.TrainId) && dbLookup.TryGetValue(service.TrainId, out var found))
-				{
-					dbData = found;
-				}
 
 				result.Add(new
 				{
@@ -289,8 +311,31 @@ namespace Ae.Rail.Controllers
 				});
 			}
 
-			return result;
-		}
+		return result;
+	}
+
+	/// <summary>
+	/// Extract the origin station's scheduled departure time (STD) from the service's previous locations.
+	/// This is needed to match against the database's origin_std field.
+	/// </summary>
+	private string? GetOriginStdFromService(Models.NationalRail.ServiceItemWithLocations service)
+	{
+		// Get the origin TIPLOC
+		if (service.Origin == null || !service.Origin.Any())
+			return null;
+
+		var originTiploc = service.Origin[0].Tiploc;
+		if (string.IsNullOrEmpty(originTiploc))
+			return null;
+
+		// Find the origin station in previous locations
+		var originLocation = service.PreviousLocations?
+			.FirstOrDefault(loc => loc.Tiploc == originTiploc);
+
+		// Extract the scheduled departure time from the origin
+		if (originLocation?.Std == null)
+			return null;
+
+		return originLocation.Std.Value.ToString("HH:mm");
 	}
 }
-
