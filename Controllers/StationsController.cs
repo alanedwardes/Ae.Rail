@@ -269,31 +269,33 @@ namespace Ae.Rail.Controllers
 					origin = service.Origin?.Select(o => _stationLookup.GetByThreeAlpha(o.Crs)).Where(s => s != null).ToList(),
 					destination = service.Destination?.Select(d => _stationLookup.GetByThreeAlpha(d.Crs)).Where(s => s != null).ToList(),
 					
-					// Calling points
-					previousLocations = service.PreviousLocations?.Select(l => new
-					{
-						station = _stationLookup.GetByThreeAlpha(l.Crs),
-						sta = l.Sta,
-						eta = l.Eta,
-						ata = l.Ata,
-						std = l.Std,
-						etd = l.Etd,
-						atd = l.Atd,
-						platform = l.Platform,
-						isCancelled = l.IsCancelled
-					}).ToList(),
-					subsequentLocations = service.SubsequentLocations?.Select(l => new
-					{
-						station = _stationLookup.GetByThreeAlpha(l.Crs),
-						sta = l.Sta,
-						eta = l.Eta,
-						ata = l.Ata,
-						std = l.Std,
-						etd = l.Etd,
-						atd = l.Atd,
-						platform = l.Platform,
-						isCancelled = l.IsCancelled
-					}).ToList(),
+				// Calling points
+				previousLocations = service.PreviousLocations?.Select(l => new
+				{
+					station = _stationLookup.GetByThreeAlpha(l.Crs),
+					sta = l.Sta,
+					eta = l.Eta,
+					ata = l.Ata,
+					std = l.Std,
+					etd = l.Etd,
+					atd = l.Atd,
+					platform = l.Platform,
+					isCancelled = l.IsCancelled,
+					isPass = l.IsPass
+				}).ToList(),
+				subsequentLocations = service.SubsequentLocations?.Select(l => new
+				{
+					station = _stationLookup.GetByThreeAlpha(l.Crs),
+					sta = l.Sta,
+					eta = l.Eta,
+					ata = l.Ata,
+					std = l.Std,
+					etd = l.Etd,
+					atd = l.Atd,
+					platform = l.Platform,
+					isCancelled = l.IsCancelled,
+					isPass = l.IsPass
+				}).ToList(),
 					
 					// Disruption info
 					cancelReason = service.CancelReason,
