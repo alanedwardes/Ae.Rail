@@ -7,6 +7,25 @@ using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel to listen on multiple ports
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+	var mainPort = builder.Configuration.GetValue<int?>("Ports:Main") ?? 8080;
+	var backofficePort = builder.Configuration.GetValue<int?>("Ports:Backoffice") ?? 8081;
+	
+	// Main API port
+	serverOptions.ListenAnyIP(mainPort, listenOptions =>
+	{
+		listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1AndHttp2;
+	});
+	
+	// Backoffice API port
+	serverOptions.ListenAnyIP(backofficePort, listenOptions =>
+	{
+		listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1AndHttp2;
+	});
+});
+
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
@@ -23,8 +42,8 @@ builder.Services.AddDbContext<Ae.Rail.Data.PostgresDbContext>((sp, options) =>
 
 builder.Services.AddScoped<Ae.Rail.Services.IPostgresRawEventWriter, Ae.Rail.Services.PostgresRawEventWriter>();
 builder.Services.AddScoped<Ae.Rail.Services.ITrainDataParser, Ae.Rail.Services.TrainDataParser>();
+builder.Services.AddScoped<Ae.Rail.Services.IReprocessingService, Ae.Rail.Services.ReprocessingService>();
 builder.Services.AddHostedService<Ae.Rail.Services.TrainsConsumerService>();
-builder.Services.AddHostedService<Ae.Rail.Services.ReprocessorService>();
 // Materialized view refresh service (DEPRECATED - replaced by real-time parsing)
 // builder.Services.AddHostedService<Ae.Rail.Services.MvRefreshService>();
 builder.Services.AddSingleton<Ae.Rail.Services.ITiplocLookup, Ae.Rail.Services.TiplocLookup>();
@@ -94,10 +113,24 @@ using (var scope = app.Services.CreateScope())
 // IMPORTANT: UseForwardedHeaders must be called before other middleware
 app.UseForwardedHeaders();
 
-// Enable rate limiting
-app.UseRateLimiter();
+// Configure middleware conditionally based on port
+var mainPort = builder.Configuration.GetValue<int?>("Ports:Main") ?? 8080;
+var backofficePort = builder.Configuration.GetValue<int?>("Ports:Backoffice") ?? 8081;
+
+app.UseWhen(
+	context => context.Connection.LocalPort == mainPort,
+	appBuilder =>
+	{
+		// Apply rate limiting only to main API
+		appBuilder.UseRateLimiter();
+	}
+);
 
 app.UseStaticFiles();
 
 app.MapControllers();
+
+app.Logger.LogInformation("Main API listening on port {MainPort}", mainPort);
+app.Logger.LogInformation("Backoffice API listening on port {BackofficePort}", backofficePort);
+
 app.Run();

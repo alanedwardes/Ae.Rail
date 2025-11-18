@@ -5,7 +5,8 @@ services:
       dockerfile: Dockerfile
     container_name: aerail
     environment:
-      ASPNETCORE_URLS: ${ASPNETCORE_URLS}
+      Ports__Main: ${PORTS_MAIN:-8080}
+      Ports__Backoffice: ${PORTS_BACKOFFICE:-8081}
       trains__bootstrapServers: ${TRAINS_BOOTSTRAP_SERVERS}
       trains__username: ${TRAINS_USERNAME}
       trains__password: ${TRAINS_PASSWORD}
@@ -16,7 +17,8 @@ services:
       NationalRail__BaseUrl: ${NATIONAL_RAIL_BASE_URL}
       NationalRail__ApiKey: ${NATIONAL_RAIL_API_KEY}
     ports:
-      - "${WEB_PORT}:5000"
+      - "${MAIN_API_PORT:-8080}:8080"
+      - "${BACKOFFICE_API_PORT:-8081}:8081"
     depends_on:
       - postgres
     restart: unless-stopped

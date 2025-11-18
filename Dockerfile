@@ -7,8 +7,8 @@ RUN dotnet publish -c Release -o /app
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 COPY --from=build /app .
-ENV ASPNETCORE_URLS=http://0.0.0.0:5000
-EXPOSE 5000
+# Ports are configured in Program.cs via appsettings or environment variables
+EXPOSE 8080 8081
 ENTRYPOINT ["dotnet", "Ae.Rail.dll"]
 
 
