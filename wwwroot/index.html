@@ -220,9 +220,8 @@ function fmtPlace(name, tiploc) {
 function createStationLink(station, textOnly = false) {
 	if (!station) return '';
 	const name = station.nlcDesc || station.tiploc || '';
-	const tiploc = station.tiploc || '';
 	const crs = station.threeAlpha || '';
-	const displayText = fmtPlace(name, tiploc);
+	const displayText = fmtPlace(name, crs);
 	
 	if (!displayText) return '';
 	if (!crs || textOnly) return displayText;
@@ -538,6 +537,7 @@ function renderStationBoard(data) {
 		const etaTime = formatTime(svc.eta);
 		
 		const callingLinks = (svc.subsequentLocations || [])
+			.filter(l => !l.isPass) // Exclude pass-through stations
 			.map(l => l.station ? createStationLink(l.station) : '')
 			.filter(link => link)
 			.join(', ');
