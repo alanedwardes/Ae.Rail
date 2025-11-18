@@ -161,6 +161,19 @@ a:focus-visible {
 	border-radius: 3px;
 }
 
+/* Station links - used for clickable station names that link to station boards */
+.station-link {
+	transition: color 0.15s ease;
+}
+.station-link:hover {
+	text-decoration-thickness: 2px;
+}
+
+/* Station link container - for service detail view */
+.station-link-container {
+	display: inline;
+}
+
 .disclaimer {
 	margin-top: 32px;
 	padding-top: 16px;

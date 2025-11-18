@@ -56,18 +56,18 @@
 			<h3 style="margin:0;">Service</h3>
 			<a id="backBtn" href="#" class="muted" style="font-size:13px;">← Back to search</a>
 		</div>
-		<div class="section">
-			<div class="kv">
-				<div class="muted">Operational Train Number</div><div id="otn" class="mono"></div>
-				<div class="muted">Service Date</div><div id="svcdate"></div>
-				<div class="muted">Origin STD</div><div id="std"></div>
-				<div class="muted">Origin</div><div id="origin"></div>
-				<div class="muted">Destination</div><div id="dest"></div>
-				<div class="muted">Class</div><div id="classCode"></div>
-				<div class="muted">Type</div><div id="classes"></div>
-				<div class="muted">Power</div><div id="power"></div>
-			</div>
+	<div class="section">
+		<div class="kv">
+			<div class="muted">Operational Train Number</div><div id="otn" class="mono"></div>
+			<div class="muted">Service Date</div><div id="svcdate"></div>
+			<div class="muted">Origin STD</div><div id="std"></div>
+			<div class="muted">Origin</div><div id="origin" class="station-link-container"></div>
+			<div class="muted">Destination</div><div id="dest" class="station-link-container"></div>
+			<div class="muted">Class</div><div id="classCode"></div>
+			<div class="muted">Type</div><div id="classes"></div>
+			<div class="muted">Power</div><div id="power"></div>
 		</div>
+	</div>
 		<div class="section">
 			<h3>Vehicles</h3>
 			<div id="vehicles" class="list"></div>
@@ -104,8 +104,8 @@ function renderItems(items) {
 		return;
 	}
 	dropdown.innerHTML = items.map(it => {
-		const from = it.origin ? (it.origin.nlcDesc || it.origin.tiploc || '') : '';
-		const to = it.destination ? (it.destination.nlcDesc || it.destination.tiploc || '') : '';
+		const fromLink = createStationLink(it.origin);
+		const toLink = createStationLink(it.destination);
 		const staVal = it.sta;
 		const sta = staVal ? `, STA ${staVal}` : '';
 		const otn = it.operationalTrainNumber || '';
@@ -118,13 +118,25 @@ function renderItems(items) {
 					<span class="date">${svcDate}</span>
 					<span class="pill">${std}${sta}</span>
 				</div>
-				<div class="line-2">${from} → ${to}</div>
+				<div class="line-2">${fromLink} → ${toLink}</div>
 			</div>`;
 	}).join('');
 	dropdown.style.display = 'block';
 
 	Array.from(dropdown.querySelectorAll('.item')).forEach(el => {
-		el.addEventListener('click', () => {
+		el.addEventListener('click', (e) => {
+			// Check if clicked on a station link
+			if (e.target.classList.contains('station-link')) {
+				e.stopPropagation();
+				const url = new URL(e.target.href);
+				const crs = url.searchParams.get('station');
+				if (crs) {
+					e.preventDefault();
+					showStation(crs);
+				}
+				return;
+			}
+			
 			const otn = el.getAttribute('data-otn');
 			const date = el.getAttribute('data-date');
 			const std = el.getAttribute('data-std');
@@ -203,6 +215,32 @@ function setText(id, val) {
 function fmtPlace(name, tiploc) {
 	if (name && tiploc && name !== tiploc) return `${name} (${tiploc})`;
 	return name || tiploc || '';
+}
+
+function createStationLink(station, textOnly = false) {
+	if (!station) return '';
+	const name = station.nlcDesc || station.tiploc || '';
+	const tiploc = station.tiploc || '';
+	const crs = station.threeAlpha || '';
+	const displayText = fmtPlace(name, tiploc);
+	
+	if (!displayText) return '';
+	if (!crs || textOnly) return displayText;
+	
+	return `<a href="?station=${encodeURIComponent(crs)}" class="station-link">${displayText}</a>`;
+}
+
+function attachStationLinkHandlers(container) {
+	Array.from(container.querySelectorAll('.station-link')).forEach(link => {
+		link.addEventListener('click', (e) => {
+			e.preventDefault();
+			const url = new URL(link.href);
+			const crs = url.searchParams.get('station');
+			if (crs) {
+				showStation(crs);
+			}
+		});
+	});
 }
 
 function renderVehicleDetails(v) {
@@ -292,8 +330,8 @@ function renderVehicleUsage(items) {
 		return;
 	}
 	el.innerHTML = items.map(it => {
-		const from = it.origin ? (it.origin.nlcDesc || it.origin.tiploc || '') : '';
-		const to = it.destination ? (it.destination.nlcDesc || it.destination.tiploc || '') : '';
+		const fromLink = createStationLink(it.origin);
+		const toLink = createStationLink(it.destination);
 		const staVal = it.sta;
 		const sta = staVal ? `, STA ${staVal}` : '';
 		const otn = it.operationalTrainNumber || '';
@@ -306,11 +344,23 @@ function renderVehicleUsage(items) {
 					<span class="date">${svcDate}</span>
 					<span class="pill">${std}${sta}</span>
 				</div>
-				<div class="line-2">${from} → ${to}</div>
+				<div class="line-2">${fromLink} → ${toLink}</div>
 			</div>`;
 	}).join('');
 	Array.from(el.querySelectorAll('.item')).forEach(node => {
-		node.addEventListener('click', () => {
+		node.addEventListener('click', (e) => {
+			// Check if clicked on a station link
+			if (e.target.classList.contains('station-link')) {
+				e.stopPropagation();
+				const url = new URL(e.target.href);
+				const crs = url.searchParams.get('station');
+				if (crs) {
+					e.preventDefault();
+					showStation(crs);
+				}
+				return;
+			}
+			
 			const otn = node.getAttribute('data-otn');
 			const date = node.getAttribute('data-date');
 			const std = node.getAttribute('data-std');
@@ -472,8 +522,15 @@ function renderStationBoard(data) {
 		const platformHidden = svc.platformIsHidden;
 		const cancelled = svc.isCancelled;
 		
-		const origins = (svc.origin || []).map(o => o.nlcDesc || o.nlcDesc16 || o.tiploc || '').join(', ');
-		const destinations = (svc.destination || []).map(d => d.nlcDesc || d.nlcDesc16 || d.tiploc || '').join(', ');
+		// Create clickable station links for origins and destinations
+		const originLinks = (svc.origin || [])
+			.map(o => createStationLink(o))
+			.filter(l => l)
+			.join(', ');
+		const destinationLinks = (svc.destination || [])
+			.map(d => createStationLink(d))
+			.filter(l => l)
+			.join(', ');
 		
 		const stdTime = formatTime(svc.std);
 		const etdTime = formatTime(svc.etd);
@@ -514,8 +571,8 @@ function renderStationBoard(data) {
 				</div>
 			</div>
 			<div style="margin-top:6px; font-size:14px;">
-				<div><strong>To:</strong> ${destinations}</div>
-				${origins ? `<div class="muted" style="font-size:13px;">From: ${origins}</div>` : ''}
+				<div><strong>To:</strong> ${destinationLinks}</div>
+				${originLinks ? `<div class="muted" style="font-size:13px;">From: ${originLinks}</div>` : ''}
 			</div>
 			${callingText ? `<div class="muted" style="font-size:13px; margin-top:4px;">${callingText}</div>` : ''}
 			${hasDbData ? `<div class="muted" style="font-size:12px; margin-top:6px;">Train ${trainId} ${clickable ? '(click for details)' : ''}</div>` : ''}
@@ -525,7 +582,19 @@ function renderStationBoard(data) {
 	// Add click handlers for services with DB data
 	Array.from(stationServices.querySelectorAll('.service-card-clickable')).forEach(card => {
 		card.style.cursor = 'pointer';
-		card.addEventListener('click', () => {
+		card.addEventListener('click', (e) => {
+			// Check if clicked on a station link
+			if (e.target.classList.contains('station-link')) {
+				e.stopPropagation();
+				const url = new URL(e.target.href);
+				const crs = url.searchParams.get('station');
+				if (crs) {
+					e.preventDefault();
+					showStation(crs);
+				}
+				return;
+			}
+			
 			const otn = card.getAttribute('data-otn');
 			const date = card.getAttribute('data-date');
 			const std = card.getAttribute('data-std');
@@ -586,12 +655,15 @@ async function showService(otn, date, std, push = true) {
 		setText('otn', svc.operationalTrainNumber);
 		setText('svcdate', svc.serviceDate);
 		setText('std', svc.originPlannedDepTime);
-		const originName = svc.origin ? (svc.origin.nlcDesc || svc.origin.tiploc || '') : '';
-		const originTiploc = svc.origin ? svc.origin.tiploc : '';
-		const destName = svc.destination ? (svc.destination.nlcDesc || svc.destination.tiploc || '') : '';
-		const destTiploc = svc.destination ? svc.destination.tiploc : '';
-		setText('origin', fmtPlace(originName, originTiploc));
-		setText('dest', fmtPlace(destName, destTiploc));
+		
+		// Use clickable station links for origin and destination
+		const originEl = document.getElementById('origin');
+		const destEl = document.getElementById('dest');
+		originEl.innerHTML = createStationLink(svc.origin);
+		destEl.innerHTML = createStationLink(svc.destination);
+		attachStationLinkHandlers(originEl);
+		attachStationLinkHandlers(destEl);
+		
 		setText('classCode', svc.classCode ? `Class ${svc.classCode}` : '');
 		setText('classes', svc.railClasses || '');
 		setText('power', svc.powerType || '');
