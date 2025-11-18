@@ -143,14 +143,14 @@ html, body {
 /* Link styles: improve readability and accessibility on dark background */
 a, a:visited {
 	color: var(--accent);
+	text-decoration: none;
+}
+a:hover {
+	color: #93c5fd; /* lighter blue for hover */
 	text-decoration: underline;
 	text-decoration-color: currentColor;
 	text-underline-offset: 2px;
 	text-decoration-thickness: 1.5px;
-}
-a:hover {
-	color: #93c5fd; /* lighter blue for hover */
-	text-decoration-color: currentColor;
 }
 a:active {
 	color: #bfdbfe; /* pressed state */
@@ -164,9 +164,6 @@ a:focus-visible {
 /* Station links - used for clickable station names that link to station boards */
 .station-link {
 	transition: color 0.15s ease;
-}
-.station-link:hover {
-	text-decoration-thickness: 2px;
 }
 
 /* Station link container - for service detail view */

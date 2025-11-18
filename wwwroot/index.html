@@ -537,12 +537,11 @@ function renderStationBoard(data) {
 		const staTime = formatTime(svc.sta);
 		const etaTime = formatTime(svc.eta);
 		
-		const calling = (svc.subsequentLocations || [])
-			.slice(0, 5)
-			.map(l => l.station ? (l.station.nlcDesc || l.station.nlcDesc16 || l.station.tiploc || '') : '')
-			.filter(name => name)
+		const callingLinks = (svc.subsequentLocations || [])
+			.map(l => l.station ? createStationLink(l.station) : '')
+			.filter(link => link)
 			.join(', ');
-		const callingText = calling ? `Calling at: ${calling}` : '';
+		const callingText = callingLinks ? `Calling at: ${callingLinks}` : '';
 		
 		const hasDbData = svc.dbData != null;
 		// Use origin STD for database lookup (not the station's STD)
