@@ -221,11 +221,12 @@ namespace Ae.Rail.Controllers
 		foreach (var service in services)
 		{
 			object? dbData = null;
+			string? originStd = null;
 			
 			if (!string.IsNullOrWhiteSpace(service.TrainId) && service.Sdd.HasValue)
 			{
 				var serviceDate = service.Sdd.Value.ToString("yyyy-MM-dd");
-				var originStd = GetOriginStdFromService(service);
+				originStd = GetOriginStdFromService(service);
 				
 				if (!string.IsNullOrEmpty(originStd))
 				{
@@ -234,26 +235,27 @@ namespace Ae.Rail.Controllers
 				}
 			}
 
-				result.Add(new
-				{
-					// National Rail API data
-					trainId = service.TrainId,
-					rid = service.Rid,
-					uid = service.Uid,
-					rsid = service.Rsid,
-					sdd = service.Sdd,
-					@operator = service.Operator,
-					operatorCode = service.OperatorCode,
-					platform = service.Platform,
-					platformIsHidden = service.PlatformIsHidden,
-					
-					// Times
-					sta = service.Sta,
-					eta = service.Eta,
-					ata = service.Ata,
-					std = service.Std,
-					etd = service.Etd,
-					atd = service.Atd,
+			result.Add(new
+			{
+				// National Rail API data
+				trainId = service.TrainId,
+				rid = service.Rid,
+				uid = service.Uid,
+				rsid = service.Rsid,
+				sdd = service.Sdd,
+				@operator = service.Operator,
+				operatorCode = service.OperatorCode,
+				platform = service.Platform,
+				platformIsHidden = service.PlatformIsHidden,
+				
+				// Times
+				sta = service.Sta,
+				eta = service.Eta,
+				ata = service.Ata,
+				std = service.Std, // Station departure time (for display)
+				originStd = originStd, // Origin departure time (for database lookups)
+				etd = service.Etd,
+				atd = service.Atd,
 					
 					// Status
 					isCancelled = service.IsCancelled,
