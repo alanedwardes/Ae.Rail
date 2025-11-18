@@ -338,4 +338,5 @@ namespace Ae.Rail.Controllers
 
 		return originLocation.Std.Value.ToString("HH:mm");
 	}
+	}
 }
