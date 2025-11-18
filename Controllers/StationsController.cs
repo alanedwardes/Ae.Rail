@@ -54,6 +54,7 @@ namespace Ae.Rail.Controllers
 			else
 			{
 				var searchTerm = q.Trim();
+				var normalizedSearchTerm = searchTerm.NormalizeForSearch();
 				
 				// Search by CRS code (exact or starts with) or station name (contains)
 				results = allStations
@@ -62,7 +63,9 @@ namespace Ae.Rail.Controllers
 						s.ThreeAlpha.Equals(searchTerm, StringComparison.OrdinalIgnoreCase) ||
 						s.ThreeAlpha.StartsWith(searchTerm, StringComparison.OrdinalIgnoreCase) ||
 						s.NlcDesc.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-						s.NlcDesc16.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+						s.NlcDesc16.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+						s.NlcDesc.NormalizeForSearch().Contains(normalizedSearchTerm, StringComparison.OrdinalIgnoreCase) ||
+						s.NlcDesc16.NormalizeForSearch().Contains(normalizedSearchTerm, StringComparison.OrdinalIgnoreCase))
 					.OrderBy(s => 
 						// Exact match first
 						s.ThreeAlpha.Equals(searchTerm, StringComparison.OrdinalIgnoreCase) ? 0 :

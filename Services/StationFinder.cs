@@ -35,12 +35,13 @@ namespace Ae.Rail.Services
 			}
 
 			var token = searchTerm.Trim();
+			var normalizedToken = token.NormalizeForSearch();
 
 			// Search by name (full/short), CRS code, or TIPLOC in StationCodeLookup (CORPUS data)
 			var matchingStations = _stationCodeLookup.GetAllRecords()
 				.Where(s =>
-					(!string.IsNullOrWhiteSpace(s.NlcDesc) && s.NlcDesc.Contains(token, StringComparison.OrdinalIgnoreCase)) ||
-					(!string.IsNullOrWhiteSpace(s.NlcDesc16) && s.NlcDesc16.Contains(token, StringComparison.OrdinalIgnoreCase)) ||
+					(!string.IsNullOrWhiteSpace(s.NlcDesc) && (s.NlcDesc.Contains(token, StringComparison.OrdinalIgnoreCase) || s.NlcDesc.NormalizeForSearch().Contains(normalizedToken, StringComparison.OrdinalIgnoreCase))) ||
+					(!string.IsNullOrWhiteSpace(s.NlcDesc16) && (s.NlcDesc16.Contains(token, StringComparison.OrdinalIgnoreCase) || s.NlcDesc16.NormalizeForSearch().Contains(normalizedToken, StringComparison.OrdinalIgnoreCase))) ||
 					(!string.IsNullOrWhiteSpace(s.ThreeAlpha) && s.ThreeAlpha.Equals(token, StringComparison.OrdinalIgnoreCase)) ||
 					(!string.IsNullOrWhiteSpace(s.Tiploc) && s.Tiploc.Contains(token, StringComparison.OrdinalIgnoreCase)))
 				.Select(s => s.Tiploc)
