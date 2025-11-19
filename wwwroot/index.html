@@ -68,6 +68,10 @@
 			<div class="muted">Power</div><div id="power"></div>
 		</div>
 	</div>
+		<div class="section" id="wikiSection" style="display:none;">
+			<h3>Class information</h3>
+			<div id="wikiContent" class="card wiki-card"></div>
+		</div>
 		<div class="section">
 			<h3>Vehicles</h3>
 			<div id="vehicles" class="list"></div>
@@ -94,8 +98,28 @@ const stationPanel = document.getElementById('station');
 const backBtn = document.getElementById('backBtn');
 const stationBackBtn = document.getElementById('stationBackBtn');
 const homeLink = document.getElementById('homeLink');
+const wikiSection = document.getElementById('wikiSection');
+const wikiContent = document.getElementById('wikiContent');
 let abortCtrl = null;
 let timer = null;
+let wikiRequestToken = 0;
+
+function escapeHtml(value) {
+	if (value == null) return '';
+	return value
+		.toString()
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
+}
+
+function safeHttpUrl(url) {
+	if (!url || typeof url !== 'string') return '';
+	if (!/^https?:\/\//i.test(url)) return '';
+	return url;
+}
 
 function renderItems(items) {
 	if (!items || items.length === 0) {
@@ -302,6 +326,89 @@ function renderVehicleDetails(v) {
 		const el = document.getElementById('vusage');
 		if (el) el.innerHTML = '<div class="muted">Failed to load recent services.</div>';
 	});
+}
+
+async function loadWikipediaClass(classCode) {
+	const url = `${API_BASE}/api/v1/wiki/british-rail-class?class=${encodeURIComponent(classCode)}`;
+	const res = await fetch(url);
+	if (res.status === 404) return null;
+	if (!res.ok) throw new Error('Wikipedia load failed');
+	return await res.json();
+}
+
+function truncateText(text, maxLength = 420) {
+	if (!text) return '';
+	return text.length > maxLength ? `${text.slice(0, maxLength).trim()}…` : text;
+}
+
+function renderWikipediaInfo(info) {
+	if (!wikiContent) return;
+	if (!info) {
+		wikiContent.innerHTML = '<div class="muted">No Wikipedia information found for this class.</div>';
+		return;
+	}
+
+	const title = escapeHtml(info.displayTitle || info.title || '');
+	const description = escapeHtml(info.description || '');
+	const extract = escapeHtml(truncateText(info.extract || info.description || ''));
+	const pageUrl = safeHttpUrl(info.pageUrl);
+	const thumbnailUrl = safeHttpUrl(info.thumbnailUrl);
+	const alt = escapeHtml(title ? `${title} photo` : 'Class thumbnail');
+
+	const infoboxRows = Array.isArray(info.infobox)
+		? info.infobox
+			.filter(f => f && f.label && f.value)
+			.slice(0, 8)
+			.map(f => `
+				<div class="wiki-grid-row">
+					<div class="muted">${escapeHtml(f.label)}</div>
+					<div>${escapeHtml(f.value)}</div>
+				</div>`)
+			.join('')
+		: '';
+
+	wikiContent.innerHTML = `
+		<div class="wiki-header">
+			${thumbnailUrl ? `<div class="wiki-thumb"><img src="${thumbnailUrl}" alt="${alt}"></div>` : ''}
+			<div>
+				${title ? `<div class="wiki-title">${title}</div>` : ''}
+				${description ? `<div class="wiki-description muted">${description}</div>` : ''}
+				${extract ? `<p class="wiki-extract">${extract}</p>` : ''}
+				${pageUrl ? `<a class="wiki-link" href="${pageUrl}" target="_blank" rel="noopener noreferrer">View on Wikipedia →</a>` : ''}
+			</div>
+		</div>
+		${infoboxRows ? `<div class="wiki-grid">${infoboxRows}</div>` : ''}
+	`;
+}
+
+function hideWikipediaSection() {
+	if (!wikiSection || !wikiContent) return;
+	wikiSection.style.display = 'none';
+	wikiContent.innerHTML = '';
+	wikiRequestToken += 1;
+}
+
+async function updateWikipediaPanel(classCode) {
+	if (!wikiSection || !wikiContent) return;
+	if (!classCode) {
+		hideWikipediaSection();
+		return;
+	}
+
+	wikiRequestToken += 1;
+	const token = wikiRequestToken;
+	wikiSection.style.display = 'block';
+	wikiContent.innerHTML = '<div class="muted">Loading class information…</div>';
+
+	try {
+		const info = await loadWikipediaClass(classCode);
+		if (token !== wikiRequestToken) return;
+		renderWikipediaInfo(info);
+	} catch (e) {
+		if (token !== wikiRequestToken) return;
+		console.error(e);
+		wikiContent.innerHTML = '<div class="muted">Failed to load Wikipedia information.</div>';
+	}
 }
 
 async function loadVehicleById(vehId) {
@@ -622,6 +729,7 @@ function showSearch(replace = false) {
 	stationPanel.style.display = 'none';
 	searchPanel.style.display = 'grid';
 	dropdown.style.display = 'none';
+	hideWikipediaSection();
 	if (replace) {
 		history.replaceState({}, '', location.pathname);
 	}
@@ -654,10 +762,12 @@ async function showService(otn, date, std, push = true) {
 		setText('classCode', svc.classCode ? `Class ${svc.classCode}` : '');
 		setText('classes', svc.railClasses || '');
 		setText('power', svc.powerType || '');
+		updateWikipediaPanel(svc.classCode || '');
 		renderVehicles(vehicles);
 	} catch (e) {
 		console.error(e);
 		document.getElementById('vehicles').innerHTML = '<div class="muted">Could not identify the vehicles for this service.</div>';
+		hideWikipediaSection();
 	}
 }
 

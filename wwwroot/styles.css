@@ -180,3 +180,51 @@ a:focus-visible {
 	color: var(--muted);
 }
 
+.wiki-card {
+	background: #0d1726;
+}
+
+.wiki-header {
+	display: flex;
+	gap: 12px;
+	align-items: flex-start;
+}
+
+.wiki-thumb img {
+	width: 96px;
+	height: 96px;
+	object-fit: cover;
+	border-radius: 8px;
+	border: 1px solid #1f2937;
+}
+
+.wiki-title {
+	font-size: 18px;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+.wiki-extract {
+	margin: 8px 0;
+	font-size: 14px;
+	line-height: 1.4;
+	color: #d1d5db;
+}
+
+.wiki-link {
+	font-size: 13px;
+}
+
+.wiki-grid {
+	margin-top: 12px;
+	display: grid;
+	gap: 6px 12px;
+}
+
+.wiki-grid-row {
+	display: grid;
+	grid-template-columns: 150px 1fr;
+	gap: 2px 12px;
+	font-size: 14px;
+}
+
