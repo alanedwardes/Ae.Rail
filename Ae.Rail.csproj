@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Confluent.Kafka" Version="2.5.3" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.11.68" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="8.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.1">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

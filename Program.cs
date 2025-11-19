@@ -102,6 +102,13 @@ builder.Services.AddHttpClient<Ae.Rail.Services.INationalRailApiClient, Ae.Rail.
 	client.DefaultRequestHeaders.Add("x-apikey", apiKey);
 });
 
+builder.Services.AddHttpClient<Ae.Rail.Services.IWikipediaClient, Ae.Rail.Services.WikipediaClient>(client =>
+{
+	client.BaseAddress = new Uri("https://en.wikipedia.org/");
+	client.Timeout = TimeSpan.FromSeconds(15);
+	client.DefaultRequestHeaders.UserAgent.ParseAdd("AeRailWikiClient/1.0 (+https://github.com/Ae-Rail/Ae.Rail)");
+});
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
