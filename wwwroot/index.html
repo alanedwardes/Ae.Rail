@@ -242,40 +242,55 @@ function attachStationLinkHandlers(container) {
 	});
 }
 
-function renderVehicleDetails(v) {
-	if (!v) {
-		vresult.innerHTML = '';
-		return;
-	}
+function vehicleCardHtml(v, options = {}) {
+	const {
+		showResourcePosition = false,
+		linkVehicle = false
+	} = options;
 	const vehId = v.vehicleId || '(unknown vehicle)';
+	const rpVal = v.resourcePosition;
+	const rp = showResourcePosition && rpVal != null && rpVal !== '' ? `#${rpVal} ` : '';
 	const clsVal = v.classCode;
 	const cls = clsVal ? ` Class ${clsVal}` : '';
 	const typeVal = v.typeOfVehicle;
 	const type = typeVal ? ` • Type ${typeVal}` : '';
 	const specType = v.specificType || '';
 	const maxSpeed = v.maximumSpeed || '';
-	const seats = v.numberOfSeats || '';
+	let seats = v.numberOfSeats;
+	seats = seats == null ? '' : seats;
 	const weight = v.weight || '';
 	const brake = v.trainBrakeType || '';
 	const livery = v.livery || '';
 	const decor = v.decor || '';
 	const power = v.powerType || '';
-	const driv = v.isDrivingVehicle ? 'Yes' : (v.isDrivingVehicle === false ? 'No' : '');
-	vresult.innerHTML = `
-		<div class="card">
-			<div><strong>${vehId}</strong><span class="muted">${cls}${type}</span></div>
-			<div class="muted">${specType}</div>
-			<div class="kv" style="margin-top:6px;">
-				<div>Max Speed</div><div>${maxSpeed}</div>
-				<div>Seats</div><div>${seats}</div>
-				<div>Weight</div><div>${weight}</div>
-				<div>Brake</div><div>${brake}</div>
-				<div>Livery</div><div>${livery}</div>
-				<div>Decor</div><div>${decor}</div>
-				<div>Power</div><div>${power}</div>
-				<div>Driving Vehicle</div><div>${driv}</div>
-			</div>
+	const driv = v.isDrivingVehicle == null ? '' : (v.isDrivingVehicle ? 'Yes' : 'No');
+	const vehLabel = linkVehicle
+		? `<a class="vehicle-link mono" href="?veh=${encodeURIComponent(vehId)}">${vehId}</a>`
+		: vehId;
+	return `<div class="card">
+		<div><strong>${rp}${vehLabel}</strong><span class="muted">${cls}${type}</span></div>
+		<div class="muted">${specType}</div>
+		<div class="kv" style="margin-top:6px;">
+			<div>Max Speed</div><div>${maxSpeed}</div>
+			<div>Seats</div><div>${seats}</div>
+			<div>Weight</div><div>${weight}</div>
+			<div>Brake</div><div>${brake}</div>
+			<div>Livery</div><div>${livery}</div>
+			<div>Decor</div><div>${decor}</div>
+			<div>Power</div><div>${power}</div>
+			<div>Driving Vehicle</div><div>${driv}</div>
 		</div>
+	</div>`;
+}
+
+function renderVehicleDetails(v) {
+	if (!v) {
+		vresult.innerHTML = '';
+		return;
+	}
+	const cardHtml = vehicleCardHtml(v);
+	vresult.innerHTML = `
+		${cardHtml}
 		<div class="section">
 			<h3>Recent services</h3>
 			<div id="vusage" class="list"><div class="muted">Loading…</div></div>
@@ -387,34 +402,7 @@ function renderVehicles(list) {
 		el.innerHTML = '<div class="muted">No vehicles found.</div>';
 		return;
 	}
-	el.innerHTML = list.map(v => {
-		const rpVal = v.resourcePosition;
-		const rp = (rpVal != null && rpVal !== '') ? `#${rpVal} ` : '';
-		const clsVal = v.classCode;
-		const cls = clsVal ? ` Class ${clsVal}` : '';
-		const typeVal = v.typeOfVehicle;
-		const type = typeVal ? ` • Type ${typeVal}` : '';
-		const vehId = v.vehicleId || '(unknown vehicle)';
-		const specType = v.specificType || '';
-		const maxSpeed = v.maximumSpeed || '';
-		const seats = v.numberOfSeats || '';
-		const weight = v.weight || '';
-		const brake = v.trainBrakeType || '';
-		const livery = v.livery || '';
-		const decor = v.decor || '';
-		return `<div class="card">
-			<div><strong>${rp}<a class="vehicle-link mono" href="?veh=${encodeURIComponent(vehId)}">${vehId}</a></strong><span class="muted">${cls}${type}</span></div>
-			<div class="muted">${specType}</div>
-			<div class="kv" style="margin-top:6px;">
-				<div>Max Speed</div><div>${maxSpeed}</div>
-				<div>Seats</div><div>${seats}</div>
-				<div>Weight</div><div>${weight}</div>
-				<div>Brake</div><div>${brake}</div>
-				<div>Livery</div><div>${livery}</div>
-				<div>Decor</div><div>${decor}</div>
-			</div>
-		</div>`;
-	}).join('');
+	el.innerHTML = list.map(v => vehicleCardHtml(v, { showResourcePosition: true, linkVehicle: true })).join('');
 	Array.from(el.querySelectorAll('.vehicle-link')).forEach(a => {
 		a.addEventListener('click', (e) => {
 			e.preventDefault();

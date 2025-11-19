@@ -408,39 +408,43 @@ namespace Ae.Rail.Controllers
 
 			try
 			{
-				var vehicles = await _dbContext.ServiceVehicles
-					.AsNoTracking()
-					.Where(v => v.OperationalTrainNumber == operationalTrainNumber
-						&& v.ServiceDate == serviceDate
-						&& v.OriginStd == originStd)
-					.OrderBy(v => v.ResourcePosition ?? int.MaxValue)
-					.ThenBy(v => v.VehicleId)
-					.Select(v => new
+				var vehicles = await (
+					from svc in _dbContext.ServiceVehicles.AsNoTracking()
+					where svc.OperationalTrainNumber == operationalTrainNumber
+						&& svc.ServiceDate == serviceDate
+						&& svc.OriginStd == originStd
+					join master in _dbContext.Vehicles.AsNoTracking()
+						on svc.VehicleId equals master.VehicleId into masterGroup
+					from master in masterGroup.DefaultIfEmpty()
+					orderby svc.ResourcePosition ?? int.MaxValue, svc.VehicleId
+					select new
 					{
-						v.VehicleId,
-						v.SpecificType,
-						v.TypeOfVehicle,
-						v.NumberOfCabs,
-						v.NumberOfSeats,
-						v.LengthUnit,
-						v.LengthMm,
-						v.Weight,
-						v.MaximumSpeed,
-						v.TrainBrakeType,
-						v.Livery,
-						v.Decor,
-						v.VehicleStatus,
-						v.RegisteredStatus,
-						v.RegisteredCategory,
-						v.DateRegistered,
-						v.DateEnteredService,
-						v.ResourcePosition,
-						v.PlannedResourceGroup,
-						v.ResourceGroupId,
-						v.FleetId,
-						v.TypeOfResource,
-						v.IsLocomotive,
-						v.ClassCode
+						svc.VehicleId,
+						svc.SpecificType,
+						svc.TypeOfVehicle,
+						svc.NumberOfCabs,
+						svc.NumberOfSeats,
+						svc.LengthUnit,
+						svc.LengthMm,
+						svc.Weight,
+						svc.MaximumSpeed,
+						svc.TrainBrakeType,
+						svc.Livery,
+						svc.Decor,
+						svc.VehicleStatus,
+						svc.RegisteredStatus,
+						svc.RegisteredCategory,
+						svc.DateRegistered,
+						svc.DateEnteredService,
+						svc.ResourcePosition,
+						svc.PlannedResourceGroup,
+						svc.ResourceGroupId,
+						svc.FleetId,
+						svc.TypeOfResource,
+						svc.IsLocomotive,
+						svc.ClassCode,
+						PowerType = master != null ? master.PowerType : null,
+						IsDrivingVehicle = master != null ? (bool?)master.IsDrivingVehicle : null
 					})
 					.ToListAsync();
 
