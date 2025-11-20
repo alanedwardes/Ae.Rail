@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,6 +39,25 @@ namespace Ae.Rail.Services
 			string? filterToc = null,
 			string? services = null,
 			bool? getNonPassengerServices = null,
+			CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Queries for services by operational train number (service ID) and service date.
+		/// Returns the list of matching RIDs and metadata for further lookups.
+		/// </summary>
+		Task<ServiceList?> QueryServicesAsync(
+			string serviceId,
+			DateOnly serviceDate,
+			string? filterTime = null,
+			string? filterCrs = null,
+			string? filterToc = null,
+			CancellationToken cancellationToken = default);
+
+		/// <summary>
+		/// Retrieves detailed real-time information about a specific service instance by RID.
+		/// </summary>
+		Task<ServiceDetails?> GetServiceDetailsByRidAsync(
+			string rid,
 			CancellationToken cancellationToken = default);
 	}
 
@@ -131,6 +152,117 @@ namespace Ae.Rail.Services
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "Unexpected error while calling National Rail API for station {Crs}", crs);
+				throw;
+			}
+		}
+
+		public async Task<ServiceList?> QueryServicesAsync(
+			string serviceId,
+			DateOnly serviceDate,
+			string? filterTime = null,
+			string? filterCrs = null,
+			string? filterToc = null,
+			CancellationToken cancellationToken = default)
+		{
+			if (string.IsNullOrWhiteSpace(serviceId))
+				throw new ArgumentException("Service ID cannot be null or empty.", nameof(serviceId));
+
+			var queryParams = new List<string>();
+
+			if (!string.IsNullOrWhiteSpace(filterTime))
+				queryParams.Add($"filterTime={Uri.EscapeDataString(filterTime)}");
+
+			if (!string.IsNullOrWhiteSpace(filterCrs))
+				queryParams.Add($"filterCRS={Uri.EscapeDataString(filterCrs)}");
+
+			if (!string.IsNullOrWhiteSpace(filterToc))
+				queryParams.Add($"filterTOC={Uri.EscapeDataString(filterToc)}");
+
+			var queryString = queryParams.Count > 0 ? "?" + string.Join("&", queryParams) : string.Empty;
+			var sdd = serviceDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+			var requestUri = $"api/20220120/QueryServices/{Uri.EscapeDataString(serviceId)}/{sdd}{queryString}";
+
+			_logger.LogDebug("Calling National Rail QueryServices API: {RequestUri}", requestUri);
+
+			try
+			{
+				var response = await _httpClient.GetAsync(requestUri, cancellationToken);
+
+				if (!response.IsSuccessStatusCode)
+				{
+					var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+					_logger.LogWarning("QueryServices request failed with status {StatusCode}: {ErrorContent}",
+						response.StatusCode, errorContent);
+					return null;
+				}
+
+				var content = await response.Content.ReadAsStringAsync(cancellationToken);
+				var result = JsonConvert.DeserializeObject<ServiceList>(content);
+
+				_logger.LogInformation("Successfully retrieved {Count} services for {ServiceId} on {Sdd}",
+					result?.Services?.Count ?? 0, serviceId, sdd);
+
+				return result;
+			}
+			catch (HttpRequestException ex)
+			{
+				_logger.LogError(ex, "HTTP request failed while querying services for {ServiceId}", serviceId);
+				throw;
+			}
+			catch (JsonException ex)
+			{
+				_logger.LogError(ex, "Failed to deserialize QueryServices response for {ServiceId}", serviceId);
+				throw;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Unexpected error while querying services for {ServiceId}", serviceId);
+				throw;
+			}
+		}
+
+		public async Task<ServiceDetails?> GetServiceDetailsByRidAsync(
+			string rid,
+			CancellationToken cancellationToken = default)
+		{
+			if (string.IsNullOrWhiteSpace(rid))
+				throw new ArgumentException("RID cannot be null or empty.", nameof(rid));
+
+			var requestUri = $"api/20220120/GetServiceDetailsByRID/{Uri.EscapeDataString(rid)}";
+			_logger.LogDebug("Calling National Rail GetServiceDetails API: {RequestUri}", requestUri);
+
+			try
+			{
+				var response = await _httpClient.GetAsync(requestUri, cancellationToken);
+
+				if (!response.IsSuccessStatusCode)
+				{
+					var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+					_logger.LogWarning("GetServiceDetails request failed with status {StatusCode}: {ErrorContent}",
+						response.StatusCode, errorContent);
+					return null;
+				}
+
+				var content = await response.Content.ReadAsStringAsync(cancellationToken);
+				var result = JsonConvert.DeserializeObject<ServiceDetails>(content);
+
+				_logger.LogInformation("Successfully retrieved service details for RID {Rid}", rid);
+
+				return result;
+			}
+			catch (HttpRequestException ex)
+			{
+				_logger.LogError(ex, "HTTP request failed while calling GetServiceDetails for RID {Rid}", rid);
+				throw;
+			}
+			catch (JsonException ex)
+			{
+				_logger.LogError(ex, "Failed to deserialize GetServiceDetails response for RID {Rid}", rid);
+				throw;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Unexpected error while calling GetServiceDetails for RID {Rid}", rid);
 				throw;
 			}
 		}

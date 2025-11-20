@@ -109,6 +109,18 @@ html, body {
 	border: 1px solid #1f2937;
 	color: #cbd5e1;
 }
+.pill-danger {
+	border-color: var(--danger);
+	color: var(--danger);
+}
+.pill-success {
+	border-color: var(--accent-2);
+	color: var(--accent-2);
+}
+.pill-muted {
+	border-color: #374151;
+	color: var(--muted);
+}
 .section {
 	margin-top: 16px;
 }
@@ -136,9 +148,16 @@ html, body {
 	padding: 10px 12px;
 	background: #0e1520;
 }
+.realtime-card {
+	background: #0d1624;
+}
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
 .muted { color: var(--muted); }
 .sp { height: 8px; }
+.realtime-kv {
+	grid-template-columns: 120px 1fr;
+	font-size: 13px;
+}
 
 /* Link styles: improve readability and accessibility on dark background */
 a, a:visited {

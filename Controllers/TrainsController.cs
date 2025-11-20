@@ -1,14 +1,16 @@
 using Ae.Rail.Data;
+using Ae.Rail.Models;
 using Ae.Rail.Services;
+using Ae.Rail.Models.NationalRail;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
-using System.Linq;
-using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 
 namespace Ae.Rail.Controllers
 {
@@ -20,14 +22,22 @@ namespace Ae.Rail.Controllers
 	private readonly ITiplocLookup _tiplocLookup;
 	private readonly IStationCodeLookup _stationCodeLookup;
 	private readonly IStationFinder _stationFinder;
+	private readonly INationalRailApiClient _nationalRailClient;
 
-	public TrainsController(ILogger<TrainsController> logger, PostgresDbContext dbContext, ITiplocLookup tiplocLookup, IStationCodeLookup stationCodeLookup, IStationFinder stationFinder)
+	public TrainsController(
+		ILogger<TrainsController> logger,
+		PostgresDbContext dbContext,
+		ITiplocLookup tiplocLookup,
+		IStationCodeLookup stationCodeLookup,
+		IStationFinder stationFinder,
+		INationalRailApiClient nationalRailClient)
 	{
 		_logger = logger;
 		_dbContext = dbContext;
 		_tiplocLookup = tiplocLookup;
 		_stationCodeLookup = stationCodeLookup;
 		_stationFinder = stationFinder;
+		_nationalRailClient = nationalRailClient;
 	}
 
 		[HttpGet]
@@ -265,13 +275,7 @@ namespace Ae.Rail.Controllers
 
 			try
 			{
-				var record = await _dbContext.TrainServices
-					.Where(r =>
-						r.OperationalTrainNumber == operationalTrainNumber &&
-						r.ServiceDate == serviceDate &&
-						r.OriginStd == originStd)
-					.OrderByDescending(r => r.TrainOriginDateTime ?? DateTime.MinValue)
-					.FirstOrDefaultAsync();
+				var record = await FindTrainServiceAsync(operationalTrainNumber, serviceDate, originStd);
 
 				if (record == null)
 				{
@@ -392,6 +396,45 @@ namespace Ae.Rail.Controllers
 			}
 		}
 
+		// GET /api/v1/trains/consist-realtime?OperationalTrainNumber=1D31&ServiceDate=2025-11-09&OriginStd=20:45
+		[HttpGet("consist-realtime")]
+		public async Task<IActionResult> GetConsistRealtime(
+			[FromQuery(Name = "OperationalTrainNumber")] string operationalTrainNumber,
+			[FromQuery(Name = "ServiceDate")] string serviceDate,
+			[FromQuery(Name = "OriginStd")] string originStd)
+		{
+			if (string.IsNullOrWhiteSpace(operationalTrainNumber) ||
+				string.IsNullOrWhiteSpace(serviceDate) ||
+				string.IsNullOrWhiteSpace(originStd))
+			{
+				return BadRequest("Query parameters 'OperationalTrainNumber', 'ServiceDate' (yyyy-MM-dd) and 'OriginStd' (HH:mm) are required.");
+			}
+
+			try
+			{
+				var record = await FindTrainServiceAsync(operationalTrainNumber, serviceDate, originStd);
+
+				if (record == null)
+				{
+					return NotFound();
+				}
+
+				var realTime = await GetRealTimeServiceInfoAsync(record, HttpContext.RequestAborted);
+
+				if (realTime == null)
+				{
+					return NoContent();
+				}
+
+				return Ok(realTime);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Failed to retrieve real-time data for OTN {OperationalTrainNumber} on {ServiceDate} at {OriginStd}", operationalTrainNumber, serviceDate, originStd);
+				return StatusCode(500, "An error occurred while retrieving real-time information.");
+			}
+		}
+
 		// GET /api/v1/trains/consist-vehicles?OperationalTrainNumber=1D31&ServiceDate=2025-11-09&OriginStd=20:45
 		[HttpGet("consist-vehicles")]
 		public async Task<IActionResult> GetConsistVehicles(
@@ -455,6 +498,153 @@ namespace Ae.Rail.Controllers
 				_logger.LogError(ex, "Failed to retrieve vehicles for OTN {OperationalTrainNumber} on {ServiceDate} at {OriginStd}", operationalTrainNumber, serviceDate, originStd);
 				return StatusCode(500, "An error occurred while retrieving vehicles for the service instance.");
 			}
+		}
+
+	private async Task<TrainService?> FindTrainServiceAsync(string operationalTrainNumber, string serviceDate, string originStd)
+	{
+		return await _dbContext.TrainServices
+			.Where(r =>
+				r.OperationalTrainNumber == operationalTrainNumber &&
+				r.ServiceDate == serviceDate &&
+				r.OriginStd == originStd)
+			.OrderByDescending(r => r.TrainOriginDateTime ?? DateTime.MinValue)
+			.FirstOrDefaultAsync();
+	}
+
+	private async Task<object?> GetRealTimeServiceInfoAsync(TrainService record, CancellationToken cancellationToken)
+		{
+			try
+			{
+				if (string.IsNullOrWhiteSpace(record.OperationalTrainNumber) || string.IsNullOrWhiteSpace(record.ServiceDate))
+				{
+					return null;
+				}
+
+				if (!DateOnly.TryParseExact(record.ServiceDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var serviceDate))
+				{
+					return null;
+				}
+
+				var filterTime = NormalizeStdTime(record.OriginStd);
+
+				var serviceList = await _nationalRailClient.QueryServicesAsync(
+					record.OperationalTrainNumber,
+					serviceDate,
+					filterTime: filterTime,
+					cancellationToken: cancellationToken);
+
+				var rid = SelectBestMatchingRid(serviceList?.Services, record.OriginStd);
+				if (string.IsNullOrWhiteSpace(rid))
+				{
+					return null;
+				}
+
+				var details = await _nationalRailClient.GetServiceDetailsByRidAsync(rid, cancellationToken);
+				if (details == null)
+				{
+					return null;
+				}
+
+				return new
+				{
+					details.Rid,
+					details.Uid,
+					details.TrainId,
+					details.Rsid,
+					details.GeneratedAt,
+					details.Operator,
+					details.OperatorCode,
+					ServiceType = details.ServiceType?.ToString(),
+					details.IsPassengerService,
+					details.IsCharter,
+					details.Category,
+					details.CancelReason,
+					details.DelayReason,
+					locations = BuildLocationPayload(details.Locations)
+				};
+			}
+			catch (Exception ex)
+			{
+				_logger.LogWarning(ex, "Failed to load real-time information for service {Otn} on {ServiceDate} {OriginStd}", record.OperationalTrainNumber, record.ServiceDate, record.OriginStd);
+				return null;
+			}
+		}
+
+		private List<object>? BuildLocationPayload(List<ServiceItemLocation>? locations)
+		{
+			if (locations == null || locations.Count == 0)
+			{
+				return null;
+			}
+
+			var result = new List<object>(locations.Count);
+
+			for (var i = 0; i < locations.Count; i++)
+			{
+				var loc = locations[i];
+				var station = !string.IsNullOrWhiteSpace(loc.Crs) ? _stationCodeLookup.GetByThreeAlpha(loc.Crs) : null;
+
+				result.Add(new
+				{
+					order = i,
+					station,
+					loc.LocationName,
+					loc.Tiploc,
+					loc.Crs,
+					loc.Platform,
+					loc.IsPass,
+					loc.IsCancelled,
+					ScheduledArrival = loc.Sta,
+					ExpectedArrival = loc.Eta,
+					ActualArrival = loc.Ata,
+					ScheduledDeparture = loc.Std,
+					ExpectedDeparture = loc.Etd,
+					ActualDeparture = loc.Atd,
+					ArrivalType = loc.ArrivalType?.ToString(),
+					DepartureType = loc.DepartureType?.ToString(),
+					loc.AdhocAlerts,
+					IsOrigin = i == 0,
+					IsDestination = i == locations.Count - 1
+				});
+			}
+
+			return result;
+		}
+
+		private static string? NormalizeStdTime(string? originStd)
+		{
+			if (string.IsNullOrWhiteSpace(originStd))
+			{
+				return null;
+			}
+
+			var cleaned = originStd.Replace(":", string.Empty, StringComparison.Ordinal);
+			return cleaned.Length == 4 ? cleaned : null;
+		}
+
+		private static string? SelectBestMatchingRid(List<ServiceListItem>? services, string? originStd)
+		{
+			if (services == null || services.Count == 0)
+			{
+				return null;
+			}
+
+			if (!string.IsNullOrWhiteSpace(originStd))
+			{
+				var normalized = NormalizeStdTime(originStd);
+
+				var match = services.FirstOrDefault(s =>
+					!string.IsNullOrWhiteSpace(s.Rid) &&
+					s.ScheduledDeparture.HasValue &&
+					s.ScheduledDeparture.Value.ToString("HHmm") == normalized);
+
+				if (match != null)
+				{
+					return match.Rid;
+				}
+			}
+
+			return services.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Rid))?.Rid;
 		}
 	}
 }

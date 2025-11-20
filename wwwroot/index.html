@@ -72,6 +72,10 @@
 			<h3>Class information</h3>
 			<div id="wikiContent" class="card wiki-card"></div>
 		</div>
+		<div class="section" id="realtimeSection" style="display:none;">
+			<h3>Real-time service</h3>
+			<div id="realtimeContent" class="list"></div>
+		</div>
 		<div class="section">
 			<h3>Vehicles</h3>
 			<div id="vehicles" class="list"></div>
@@ -100,6 +104,8 @@ const stationBackBtn = document.getElementById('stationBackBtn');
 const homeLink = document.getElementById('homeLink');
 const wikiSection = document.getElementById('wikiSection');
 const wikiContent = document.getElementById('wikiContent');
+const realtimeSection = document.getElementById('realtimeSection');
+const realtimeContent = document.getElementById('realtimeContent');
 let abortCtrl = null;
 let timer = null;
 let wikiRequestToken = 0;
@@ -388,6 +394,12 @@ function hideWikipediaSection() {
 	wikiRequestToken += 1;
 }
 
+function hideRealTimeSection() {
+	if (!realtimeSection || !realtimeContent) return;
+	realtimeSection.style.display = 'none';
+	realtimeContent.innerHTML = '';
+}
+
 async function updateWikipediaPanel(classCode) {
 	if (!wikiSection || !wikiContent) return;
 	if (!classCode) {
@@ -429,6 +441,7 @@ async function showVehicle(vehId, push = true) {
 	searchPanel.style.display = 'grid';
 	svcPanel.style.display = 'none';
 	dropdown.style.display = 'none';
+	hideRealTimeSection();
 	if (push) {
 		const qs = `?veh=${encodeURIComponent(vehId)}`;
 		history.pushState({ veh: vehId }, '', `${qs}`);
@@ -489,6 +502,67 @@ function renderVehicleUsage(items) {
 		});
 	});
 }
+
+function formatRealTimeCell(scheduled, expected, actual) {
+	const sched = formatTime(scheduled);
+	const exp = formatTime(expected);
+	const act = formatTime(actual);
+	if (act) return `<span class="mono">${act}</span> <span class="muted">actual</span>`;
+	if (exp && exp !== sched) {
+		const schedText = sched ? ` <span class="muted">sched ${sched}</span>` : '';
+		return `<span class="mono">${exp}</span> <span class="muted">expected</span>${schedText}`;
+	}
+	return sched ? `<span class="mono">${sched}</span>` : '—';
+}
+
+function renderRealTimeLocation(loc) {
+	const label = loc.isOrigin ? 'Origin' : (loc.isDestination ? 'Destination' : 'Calling point');
+	const stationHtml = loc.station ? createStationLink(loc.station) : escapeHtml(loc.locationName || loc.tiploc || loc.crs || '(Unknown)');
+	const platform = loc.platform || '—';
+	let status = '';
+	if (loc.isCancelled) {
+		status = '<span class="pill pill-danger">Cancelled</span>';
+	} else if (loc.isPass) {
+		status = '<span class="pill pill-muted">Pass</span>';
+	} else if (loc.actualDeparture || loc.actualArrival) {
+		status = '<span class="pill pill-success">Completed</span>';
+	}
+	const alerts = Array.isArray(loc.adhocAlerts) && loc.adhocAlerts.length > 0
+		? `<div class="muted" style="font-size:12px; margin-top:6px;">${loc.adhocAlerts.map(escapeHtml).join('<br>')}</div>`
+		: '';
+	return `<div class="card realtime-card">
+		<div class="line-1">
+			<span class="otn">${label}</span>
+			${status}
+		</div>
+		<div class="line-2">${stationHtml}</div>
+		<div class="kv realtime-kv">
+			<div>Arrival</div><div>${formatRealTimeCell(loc.scheduledArrival, loc.expectedArrival, loc.actualArrival)}</div>
+			<div>Departure</div><div>${formatRealTimeCell(loc.scheduledDeparture, loc.expectedDeparture, loc.actualDeparture)}</div>
+			<div>Platform</div><div>${escapeHtml(platform)}</div>
+		</div>
+		${alerts}
+	</div>`;
+}
+
+function renderRealTimeInfo(rt) {
+	if (!realtimeSection || !realtimeContent) return;
+	if (!rt || !Array.isArray(rt.locations) || rt.locations.length === 0) {
+		hideRealTimeSection();
+		return;
+	}
+	realtimeSection.style.display = 'block';
+	const updated = rt.generatedAt ? new Date(rt.generatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+	const metaParts = [];
+	if (rt.rid) metaParts.push(`RID ${escapeHtml(rt.rid)}`);
+	if (rt.operator) metaParts.push(escapeHtml(rt.operator));
+	if (updated) metaParts.push(`Updated ${escapeHtml(updated)}`);
+	const summary = metaParts.length > 0
+		? `<div class="muted" style="margin-bottom:8px;">${metaParts.join(' • ')}</div>`
+		: '';
+	realtimeContent.innerHTML = summary + rt.locations.map(renderRealTimeLocation).join('');
+	attachStationLinkHandlers(realtimeContent);
+}
 async function loadService(otn, date, std) {
 	const url = `${API_BASE}/api/v1/trains/consist-instance?OperationalTrainNumber=${encodeURIComponent(otn)}&ServiceDate=${encodeURIComponent(date)}&OriginStd=${encodeURIComponent(std)}`;
 	const res = await fetch(url);
@@ -500,6 +574,15 @@ async function loadVehicles(otn, date, std) {
 	const url = `${API_BASE}/api/v1/trains/consist-vehicles?OperationalTrainNumber=${encodeURIComponent(otn)}&ServiceDate=${encodeURIComponent(date)}&OriginStd=${encodeURIComponent(std)}`;
 	const res = await fetch(url);
 	if (!res.ok) throw new Error('Vehicles load failed');
+	return await res.json();
+}
+
+async function loadServiceRealtime(otn, date, std) {
+	const url = `${API_BASE}/api/v1/trains/consist-realtime?OperationalTrainNumber=${encodeURIComponent(otn)}&ServiceDate=${encodeURIComponent(date)}&OriginStd=${encodeURIComponent(std)}`;
+	const res = await fetch(url);
+	if (res.status === 204) return null;
+	if (res.status === 404) return null;
+	if (!res.ok) throw new Error('Realtime load failed');
 	return await res.json();
 }
 
@@ -710,6 +793,7 @@ async function showStation(crs, push = true) {
 	svcPanel.style.display = 'none';
 	stationPanel.style.display = 'block';
 	sDropdown.style.display = 'none';
+	hideRealTimeSection();
 	if (push) {
 		const qs = `?station=${encodeURIComponent(crs)}`;
 		history.pushState({ station: crs }, '', `${qs}`);
@@ -730,6 +814,7 @@ function showSearch(replace = false) {
 	searchPanel.style.display = 'grid';
 	dropdown.style.display = 'none';
 	hideWikipediaSection();
+	hideRealTimeSection();
 	if (replace) {
 		history.replaceState({}, '', location.pathname);
 	}
@@ -740,13 +825,18 @@ async function showService(otn, date, std, push = true) {
 	stationPanel.style.display = 'none';
 	svcPanel.style.display = 'block';
 	dropdown.style.display = 'none';
+	hideRealTimeSection();
 	if (push) {
 		const qs = `?otn=${encodeURIComponent(otn)}&date=${encodeURIComponent(date)}&std=${encodeURIComponent(std)}`;
 		history.pushState({ otn, date, std }, '', `${qs}`);
 	}
 	document.getElementById('vehicles').innerHTML = '<div class="muted">Loading…</div>';
 	try {
-		const [svc, vehicles] = await Promise.all([loadService(otn, date, std), loadVehicles(otn, date, std)]);
+		const servicePromise = loadService(otn, date, std);
+		const vehiclesPromise = loadVehicles(otn, date, std);
+		const realtimePromise = loadServiceRealtime(otn, date, std).catch(() => null);
+
+		const [svc, vehicles, realtime] = await Promise.all([servicePromise, vehiclesPromise, realtimePromise]);
 		setText('otn', svc.operationalTrainNumber);
 		setText('svcdate', svc.serviceDate);
 		setText('std', svc.originPlannedDepTime);
@@ -763,11 +853,13 @@ async function showService(otn, date, std, push = true) {
 		setText('classes', svc.railClasses || '');
 		setText('power', svc.powerType || '');
 		updateWikipediaPanel(svc.classCode || '');
+		renderRealTimeInfo(realtime || null);
 		renderVehicles(vehicles);
 	} catch (e) {
 		console.error(e);
 		document.getElementById('vehicles').innerHTML = '<div class="muted">Could not identify the vehicles for this service.</div>';
 		hideWikipediaSection();
+		hideRealTimeSection();
 	}
 }
 
