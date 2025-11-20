@@ -64,11 +64,13 @@ namespace Ae.Rail.Services
 	public sealed class NationalRailApiClient : INationalRailApiClient
 	{
 		private readonly HttpClient _httpClient;
+		private readonly IHttpClientFactory _httpClientFactory;
 		private readonly ILogger<NationalRailApiClient> _logger;
 
-		public NationalRailApiClient(HttpClient httpClient, ILogger<NationalRailApiClient> logger)
+		public NationalRailApiClient(HttpClient httpClient, IHttpClientFactory httpClientFactory, ILogger<NationalRailApiClient> logger)
 		{
 			_httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+			_httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
 			_logger = logger ?? throw new ArgumentNullException(nameof(logger));
 		}
 
@@ -121,7 +123,8 @@ namespace Ae.Rail.Services
 
 				_logger.LogDebug("Calling National Rail API: {RequestUri}", requestUri);
 
-				var response = await _httpClient.GetAsync(requestUri, cancellationToken);
+				var queryClient = _httpClientFactory.CreateClient("NationalRailQueryClient");
+				var response = await queryClient.GetAsync(requestUri, cancellationToken);
 
 				if (!response.IsSuccessStatusCode)
 				{
@@ -186,7 +189,8 @@ namespace Ae.Rail.Services
 
 			try
 			{
-				var response = await _httpClient.GetAsync(requestUri, cancellationToken);
+				var queryClient = _httpClientFactory.CreateClient("NationalRailQueryClient");
+				var response = await queryClient.GetAsync(requestUri, cancellationToken);
 
 				if (!response.IsSuccessStatusCode)
 				{

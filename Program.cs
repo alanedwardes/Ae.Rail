@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Options;
+using Ae.Rail.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -91,12 +93,25 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // Register National Rail API Client
+builder.Services.Configure<NationalRailApiOptions>(builder.Configuration.GetSection("NationalRail"));
+
 builder.Services.AddHttpClient<Ae.Rail.Services.INationalRailApiClient, Ae.Rail.Services.NationalRailApiClient>((sp, client) =>
 {
-	var config = sp.GetRequiredService<IConfiguration>();
-	var baseUrl = config.GetValue<string>("NationalRail:BaseUrl") ?? throw new InvalidOperationException("NationalRail:BaseUrl configuration is required");
-	var apiKey = config.GetValue<string>("NationalRail:ApiKey") ?? throw new InvalidOperationException("NationalRail:ApiKey configuration is required");
+	var options = sp.GetRequiredService<IOptions<NationalRailApiOptions>>().Value;
+	var baseUrl = options.BaseUrl ?? throw new InvalidOperationException("NationalRail:BaseUrl configuration is required");
+	var apiKey = options.ApiKey ?? throw new InvalidOperationException("NationalRail:ApiKey configuration is required");
 	
+	client.BaseAddress = new Uri(baseUrl);
+	client.Timeout = TimeSpan.FromSeconds(30);
+	client.DefaultRequestHeaders.Add("x-apikey", apiKey);
+});
+
+builder.Services.AddHttpClient("NationalRailQueryClient", (sp, client) =>
+{
+	var options = sp.GetRequiredService<IOptions<NationalRailApiOptions>>().Value;
+	var baseUrl = options.QueryBaseUrl ?? options.BaseUrl ?? throw new InvalidOperationException("NationalRail:BaseUrl configuration is required");
+	var apiKey = options.QueryApiKey ?? options.ApiKey ?? throw new InvalidOperationException("NationalRail:ApiKey configuration is required");
+
 	client.BaseAddress = new Uri(baseUrl);
 	client.Timeout = TimeSpan.FromSeconds(30);
 	client.DefaultRequestHeaders.Add("x-apikey", apiKey);
