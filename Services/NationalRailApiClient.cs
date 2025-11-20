@@ -237,7 +237,8 @@ namespace Ae.Rail.Services
 
 			try
 			{
-				var response = await _httpClient.GetAsync(requestUri, cancellationToken);
+				var queryClient = _httpClientFactory.CreateClient("NationalRailQueryClient");
+				var response = await queryClient.GetAsync(requestUri, cancellationToken);
 
 				if (!response.IsSuccessStatusCode)
 				{
