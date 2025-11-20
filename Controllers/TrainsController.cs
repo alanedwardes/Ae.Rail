@@ -525,7 +525,7 @@ namespace Ae.Rail.Controllers
 					return null;
 				}
 
-				var filterTime = NormalizeStdTime(record.OriginStd);
+				var filterTime = NormalizeStdTime(record.OriginStd, includeSeconds: true);
 
 				var serviceList = await _nationalRailClient.QueryServicesAsync(
 					record.OperationalTrainNumber,
@@ -611,15 +611,20 @@ namespace Ae.Rail.Controllers
 			return result;
 		}
 
-		private static string? NormalizeStdTime(string? originStd)
+	private static string? NormalizeStdTime(string? originStd, bool includeSeconds = false)
 		{
 			if (string.IsNullOrWhiteSpace(originStd))
 			{
 				return null;
 			}
 
-			var cleaned = originStd.Replace(":", string.Empty, StringComparison.Ordinal);
-			return cleaned.Length == 4 ? cleaned : null;
+		var cleaned = originStd.Replace(":", string.Empty, StringComparison.Ordinal);
+		if (cleaned.Length != 4)
+		{
+			return null;
+		}
+
+		return includeSeconds ? $"{cleaned}00" : cleaned;
 		}
 
 		private static string? SelectBestMatchingRid(List<ServiceListItem>? services, string? originStd)

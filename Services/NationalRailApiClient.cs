@@ -123,8 +123,7 @@ namespace Ae.Rail.Services
 
 				_logger.LogDebug("Calling National Rail API: {RequestUri}", requestUri);
 
-				var queryClient = _httpClientFactory.CreateClient("NationalRailQueryClient");
-				var response = await queryClient.GetAsync(requestUri, cancellationToken);
+				var response = await _httpClient.GetAsync(requestUri, cancellationToken);
 
 				if (!response.IsSuccessStatusCode)
 				{
@@ -172,8 +171,9 @@ namespace Ae.Rail.Services
 
 			var queryParams = new List<string>();
 
-			if (!string.IsNullOrWhiteSpace(filterTime))
-				queryParams.Add($"filterTime={Uri.EscapeDataString(filterTime)}");
+			var normalizedFilterTime = NormalizeFilterTime(filterTime);
+			if (!string.IsNullOrWhiteSpace(normalizedFilterTime))
+				queryParams.Add($"filterTime={Uri.EscapeDataString(normalizedFilterTime)}");
 
 			if (!string.IsNullOrWhiteSpace(filterCrs))
 				queryParams.Add($"filterCRS={Uri.EscapeDataString(filterCrs)}");
@@ -269,6 +269,20 @@ namespace Ae.Rail.Services
 				_logger.LogError(ex, "Unexpected error while calling GetServiceDetails for RID {Rid}", rid);
 				throw;
 			}
+		}
+
+		private static string? NormalizeFilterTime(string? filterTime)
+		{
+			if (string.IsNullOrWhiteSpace(filterTime))
+				return null;
+
+			var trimmed = filterTime.Replace(":", string.Empty, StringComparison.Ordinal);
+			if (trimmed.Length == 4)
+			{
+				return trimmed + "00";
+			}
+
+			return trimmed.Length == 6 ? trimmed : null;
 		}
 	}
 }
