@@ -315,6 +315,7 @@ namespace Ae.Rail.Controllers
 							dbData.OriginStd,
 							dbData.OriginLocationName,
 							dbData.DestLocationName,
+							dbData.ClassCode,
 							dbData.RailClasses,
 							dbData.PowerType,
 							dbData.TrainOriginDateTime,

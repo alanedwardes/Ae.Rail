@@ -190,37 +190,60 @@ namespace Ae.Rail.Services
 			}
 
 				// Resource group info
-				if (firstAllocation.TryGetProperty("ResourceGroup", out var resourceGroup))
+				JsonElement bestResourceGroup = default;
+				bool foundResourceGroup = false;
+
+				foreach (var allocation in allocations.EnumerateArray())
 				{
-					if (resourceGroup.TryGetProperty("FleetId", out var fleetId))
+					if (!allocation.TryGetProperty("ResourceGroup", out var rg))
+						continue;
+
+					// If we haven't found any yet, take this one as candidate
+					if (!foundResourceGroup)
+					{
+						bestResourceGroup = rg;
+						foundResourceGroup = true;
+					}
+
+					// Check if this is a preferred type (Locomotive or Unit)
+					if (rg.TryGetProperty("TypeOfResource", out var torProp))
+					{
+						var tor = torProp.GetString();
+						if (string.Equals(tor, "L", StringComparison.OrdinalIgnoreCase) || 
+							string.Equals(tor, "U", StringComparison.OrdinalIgnoreCase))
+						{
+							bestResourceGroup = rg;
+							foundResourceGroup = true;
+							break; // Found a main traction unit, stop searching
+						}
+					}
+				}
+
+				if (foundResourceGroup)
+				{
+					if (bestResourceGroup.TryGetProperty("FleetId", out var fleetId))
 						trainService.FleetId = fleetId.GetString();
-					if (resourceGroup.TryGetProperty("TypeOfResource", out var typeOfResource))
+					if (bestResourceGroup.TryGetProperty("TypeOfResource", out var typeOfResource))
 						trainService.TypeOfResource = typeOfResource.GetString();
-					if (resourceGroup.TryGetProperty("ResourceGroupId", out var resourceGroupId))
+					if (bestResourceGroup.TryGetProperty("ResourceGroupId", out var resourceGroupId))
 						trainService.ResourceGroupId = resourceGroupId.GetString();
 
 					// Class code
-					var typeOfRes = trainService.TypeOfResource;
-					if (string.Equals(typeOfRes, "U", StringComparison.OrdinalIgnoreCase) && trainService.ResourceGroupId?.Length >= 3)
+					string? firstVehicleId = null;
+					if (bestResourceGroup.TryGetProperty("Vehicle", out var vehicles) && vehicles.GetArrayLength() > 0)
 					{
-						trainService.ClassCode = trainService.ResourceGroupId.Substring(0, 3);
+						var v = vehicles[0];
+						if (v.TryGetProperty("VehicleId", out var vid))
+							firstVehicleId = vid.GetString();
 					}
-					else if (resourceGroup.TryGetProperty("Vehicle", out var vehicles) && vehicles.GetArrayLength() > 0)
-					{
-						var firstVehicle = vehicles[0];
-						if (firstVehicle.TryGetProperty("VehicleId", out var vehicleId))
-						{
-							var vid = vehicleId.GetString();
-							if (!string.IsNullOrEmpty(vid) && vid.Length >= 2)
-								trainService.ClassCode = vid.Substring(0, 2);
-						}
-					}
+
+					trainService.ClassCode = DeriveClassCode(trainService.TypeOfResource, trainService.ResourceGroupId, firstVehicleId);
 
 					// Power type
-					trainService.PowerType = GetPowerType(typeOfRes);
+					trainService.PowerType = GetPowerType(trainService.TypeOfResource);
 
 					// Rail classes
-					trainService.RailClasses = GetRailClasses(typeOfRes);
+					trainService.RailClasses = GetRailClasses(trainService.TypeOfResource);
 				}
 
 				// TOI info
@@ -362,14 +385,7 @@ namespace Ae.Rail.Services
 				vehicle.IsLocomotive = string.Equals(typeOfResource, "L", StringComparison.OrdinalIgnoreCase);
 
 				// Class code
-				if (string.Equals(typeOfResource, "U", StringComparison.OrdinalIgnoreCase) && resourceGroupId.Length >= 3)
-				{
-					vehicle.ClassCode = resourceGroupId.Substring(0, 3);
-				}
-				else if (vehicleId.Length >= 2)
-				{
-					vehicle.ClassCode = vehicleId.Substring(0, 2);
-				}
+				vehicle.ClassCode = DeriveClassCode(typeOfResource, resourceGroupId, vehicleId);
 
 				// Power type
 				vehicle.PowerType = GetPowerTypeFromClass(vehicle.ClassCode);
@@ -487,14 +503,7 @@ namespace Ae.Rail.Services
 				serviceVehicle.IsLocomotive = string.Equals(typeOfResource, "L", StringComparison.OrdinalIgnoreCase);
 
 				// Class code
-				if (string.Equals(typeOfResource, "U", StringComparison.OrdinalIgnoreCase) && resourceGroupId.Length >= 3)
-				{
-					serviceVehicle.ClassCode = resourceGroupId.Substring(0, 3);
-				}
-				else if (vehicleId.Length >= 2)
-				{
-					serviceVehicle.ClassCode = vehicleId.Substring(0, 2);
-				}
+				serviceVehicle.ClassCode = DeriveClassCode(typeOfResource, resourceGroupId, vehicleId);
 
 				return serviceVehicle;
 			}
@@ -821,6 +830,23 @@ namespace Ae.Rail.Services
 			if (length.TryGetProperty("Value", out var val) && val.ValueKind == JsonValueKind.Number)
 				lengthMm = (int)val.GetDecimal();
 		}
+	}
+
+	private static string? DeriveClassCode(string? typeOfResource, string? resourceGroupId, string? vehicleId)
+	{
+		if (string.Equals(typeOfResource, "U", StringComparison.OrdinalIgnoreCase) && 
+			!string.IsNullOrEmpty(resourceGroupId) && 
+			resourceGroupId.Length >= 3)
+		{
+			return resourceGroupId.Substring(0, 3);
+		}
+		
+		if (!string.IsNullOrEmpty(vehicleId) && vehicleId.Length >= 2)
+		{
+			return vehicleId.Substring(0, 2);
+		}
+
+		return null;
 	}
 
 	private static string? GetPowerTypeFromClass(string? classCode)
