@@ -724,7 +724,8 @@ function renderStationBoard(data) {
 		const hasDbData = svc.dbData != null;
 		// Use origin STD for database lookup (not the station's STD)
 		const serviceDate = svc.sdd ? new Date(svc.sdd).toISOString().split('T')[0] : null;
-		const originStd = svc.originStd || null; // Origin departure time for DB lookup
+		// If originStd is not available (e.g. database fallback only), try to use the DB data directly
+		const originStd = svc.originStd || (hasDbData ? svc.dbData.originStd : null); 
 		const clickable = hasDbData && trainId && serviceDate && originStd;
 		
 		const statusColor = cancelled ? 'var(--danger)' : 'var(--text)';
