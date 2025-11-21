@@ -335,16 +335,29 @@ namespace Ae.Rail.Controllers
 				var tiploc = station.Tiploc;
 
 				// Determine STD/STA
-				string? std = null;
-				string? sta = null;
+				DateTime? std = null;
+				DateTime? sta = null;
 
 				if (dbService.OriginLocationName == tiploc)
 				{
-					std = dbService.OriginStd;
+					if (!string.IsNullOrWhiteSpace(dbService.ServiceDate) && !string.IsNullOrWhiteSpace(dbService.OriginStd))
+					{
+						try 
+						{
+							var datePart = DateTime.ParseExact(dbService.ServiceDate, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+							// OriginStd is expected to be HH:mm
+							var timePart = TimeSpan.Parse(dbService.OriginStd);
+							std = datePart.Add(timePart);
+						}
+						catch 
+						{
+							// Ignore parse errors, leave std as null
+						}
+					}
 				}
 				else if (dbService.DestLocationName == tiploc)
 				{
-					sta = dbService.TrainDestDateTime?.ToString("HH:mm");
+					sta = dbService.TrainDestDateTime;
 				}
 
 				result.Add(new
@@ -353,7 +366,7 @@ namespace Ae.Rail.Controllers
 					trainId = dbService.OperationalTrainNumber,
 					rid = (string?)null,
 					uid = (string?)null,
-					sdd = dbService.ServiceDate != null ? DateOnly.ParseExact(dbService.ServiceDate, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) : (DateOnly?)null,
+					sdd = dbService.ServiceDate != null ? DateTime.ParseExact(dbService.ServiceDate, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) : (DateTime?)null,
 					@operator = (string?)null,
 					operatorCode = (string?)null,
 					platform = (string?)null,
@@ -384,7 +397,8 @@ namespace Ae.Rail.Controllers
 
 			return result.OrderBy(x => {
 				dynamic d = x;
-				return (string)(d.std ?? d.sta ?? "00:00");
+				DateTime? sortTime = d.std ?? d.sta;
+				return sortTime ?? DateTime.MaxValue;
 			}).ToList();
 		}
 
