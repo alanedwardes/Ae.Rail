@@ -1,5 +1,6 @@
 using Ae.Rail.Data;
 using Ae.Rail.Services;
+using Ae.Rail.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
@@ -116,39 +117,47 @@ namespace Ae.Rail.Controllers
 				_logger.LogInformation("Fetching station board for {Crs} ({StationName}) at {Time}", 
 					crs, station.NlcDesc, boardTime);
 
-				// Call National Rail API
-				var board = await _nationalRailClient.GetArrDepBoardWithDetailsAsync(
-					crs: crs.ToUpperInvariant(),
-					time: boardTime,
-					numRows: numRows,
-					timeWindow: timeWindow
-				);
-
-				if (board == null)
+				// 1. Fetch API data (optional/can fail)
+				Models.NationalRail.StationBoardWithDetails? board = null;
+				try
 				{
-					return StatusCode(502, "Failed to retrieve data from National Rail API.");
+					board = await _nationalRailClient.GetArrDepBoardWithDetailsAsync(
+						crs: crs.ToUpperInvariant(),
+						time: boardTime,
+						numRows: numRows,
+						timeWindow: timeWindow
+					);
+				}
+				catch (Exception ex)
+				{
+					_logger.LogError(ex, "Failed to retrieve data from National Rail API for {Crs}", crs);
 				}
 
-				// Enrich services with database information
-				var enrichedServices = await EnrichServicesWithDbData(board.TrainServices);
+				// 2. Fetch DB data (consist data)
+				// We fetch all services for the day touching this station to merge
+				var dbServices = await GetDbServices(station, boardTime);
+
+				// 3. Merge API and DB data
+				// This handles deduplication: if in API, use API + DB enrich. If only in DB, use DB.
+				var mergedServices = MergeServices(board?.TrainServices, dbServices, station);
 
 			var response = new
 			{
 				station = station,
 				board = new
 				{
-					generatedAt = board.GeneratedAt,
-					locationName = board.LocationName,
-					platformsAreHidden = board.PlatformsAreHidden,
-					servicesAreUnavailable = board.ServicesAreUnavailable,
-					nrccMessages = board.NrccMessages?.Select(m => new
+					generatedAt = board?.GeneratedAt ?? DateTime.UtcNow,
+					locationName = board?.LocationName ?? station.NlcDesc,
+					platformsAreHidden = board?.PlatformsAreHidden ?? false,
+					servicesAreUnavailable = (board?.ServicesAreUnavailable ?? true) && mergedServices.Count == 0,
+					nrccMessages = board?.NrccMessages?.Select(m => new
 					{
 						category = m.Category?.ToString(),
 						severity = m.Severity?.ToString(),
 						message = m.XhtmlMessage
 					}).ToList()
 				},
-				services = enrichedServices
+				services = mergedServices
 			};
 
 			return Ok(response);
@@ -160,166 +169,224 @@ namespace Ae.Rail.Controllers
 			}
 		}
 
-	private async Task<List<object>> EnrichServicesWithDbData(List<Models.NationalRail.ServiceItemWithLocations>? services)
-	{
-		if (services == null || services.Count == 0)
+		private async Task<List<TrainService>> GetDbServices(StationCodeRecord station, DateTime date)
 		{
-			return new List<object>();
-		}
-
-		var result = new List<object>();
-
-		// Build lookup keys: (TrainId, ServiceDate, OriginStd)
-		var lookupKeys = new List<(string TrainId, string ServiceDate, string OriginStd)>();
-		
-		foreach (var service in services)
-		{
-			if (string.IsNullOrWhiteSpace(service.TrainId))
-				continue;
-
-			// Extract service date
-			var serviceDate = service.Sdd?.ToString("yyyy-MM-dd");
-			if (string.IsNullOrEmpty(serviceDate))
-				continue;
-
-			// Extract origin STD from PreviousLocations
-			var originStd = GetOriginStdFromService(service);
-			if (string.IsNullOrEmpty(originStd))
-				continue;
-
-			lookupKeys.Add((service.TrainId, serviceDate, originStd));
-		}
-
-		// Batch lookup in database using the three-part key
-		Dictionary<string, object> dbLookup = new();
-		if (lookupKeys.Any())
-		{
-			var trainIds = lookupKeys.Select(k => k.TrainId).Distinct().ToList();
-			
-			var dbServices = await _dbContext.TrainServices
-				.Where(ts => trainIds.Contains(ts.OperationalTrainNumber))
-				.Select(ts => new
-				{
-					ts.OperationalTrainNumber,
-					ts.ServiceDate,
-					ts.OriginStd,
-					ts.OriginLocationName,
-					ts.DestLocationName,
-					ts.RailClasses,
-					ts.PowerType,
-					ts.TrainOriginDateTime,
-					ts.TrainDestDateTime
-				})
-				.ToListAsync();
-
-			// Index by (OTN, ServiceDate, OriginStd) composite key
-			foreach (var dbService in dbServices)
+			if (string.IsNullOrWhiteSpace(station.Tiploc))
 			{
-				var key = $"{dbService.OperationalTrainNumber}|{dbService.ServiceDate}|{dbService.OriginStd}";
-				dbLookup[key] = dbService;
+				return new List<TrainService>();
 			}
+
+			var serviceDate = date.ToString("yyyy-MM-dd");
+			var tiploc = station.Tiploc;
+
+			return await _dbContext.TrainServices
+				.AsNoTracking()
+				.Where(ts => ts.ServiceDate == serviceDate && 
+							(ts.OriginLocationName == tiploc || ts.DestLocationName == tiploc))
+				.OrderBy(ts => ts.OriginStd)
+				.ToListAsync();
 		}
 
-		// Enrich each service
-		foreach (var service in services)
+		private List<object> MergeServices(
+			List<Models.NationalRail.ServiceItemWithLocations>? apiServices,
+			List<TrainService> dbServices,
+			StationCodeRecord station)
 		{
-			object? dbData = null;
-			string? originStd = null;
+			var result = new List<object>();
+			var dbLookup = new Dictionary<string, TrainService>();
 			
-			if (!string.IsNullOrWhiteSpace(service.TrainId) && service.Sdd.HasValue)
+			// Index DB services
+			foreach (var dbSvc in dbServices)
 			{
-				var serviceDate = service.Sdd.Value.ToString("yyyy-MM-dd");
-				originStd = GetOriginStdFromService(service);
-				
-				if (!string.IsNullOrEmpty(originStd))
+				var key = $"{dbSvc.OperationalTrainNumber}|{dbSvc.ServiceDate}|{dbSvc.OriginStd}";
+				// Use TryAdd to avoid duplicate keys issues if dirty data
+				if (!dbLookup.ContainsKey(key))
 				{
-					var key = $"{service.TrainId}|{serviceDate}|{originStd}";
-					dbLookup.TryGetValue(key, out dbData);
+					dbLookup[key] = dbSvc;
 				}
 			}
 
-			result.Add(new
+			var usedDbIds = new HashSet<long>();
+
+			// Process API services
+			if (apiServices != null)
 			{
-				// National Rail API data
-				trainId = service.TrainId,
-				rid = service.Rid,
-				uid = service.Uid,
-				rsid = service.Rsid,
-				sdd = service.Sdd,
-				@operator = service.Operator,
-				operatorCode = service.OperatorCode,
-				platform = service.Platform,
-				platformIsHidden = service.PlatformIsHidden,
-				
-				// Times
-				sta = service.Sta,
-				eta = service.Eta,
-				ata = service.Ata,
-				std = service.Std, // Station departure time (for display)
-				originStd = originStd, // Origin departure time (for database lookups)
-				etd = service.Etd,
-				atd = service.Atd,
-					
-					// Status
-					isCancelled = service.IsCancelled,
-					arrivalType = service.ArrivalType?.ToString(),
-					departureType = service.DepartureType?.ToString(),
-					
-					// Journey - resolve to StationCodeRecord using CRS (3ALPHA) from National Rail API
-					origin = service.Origin?.Select(o => _stationLookup.GetByThreeAlpha(o.Crs)).Where(s => s != null).ToList(),
-					destination = service.Destination?.Select(d => _stationLookup.GetByThreeAlpha(d.Crs)).Where(s => s != null).ToList(),
-					
-				// Calling points
-				previousLocations = service.PreviousLocations?.Select(l => new
+				foreach (var service in apiServices)
 				{
-					station = _stationLookup.GetByThreeAlpha(l.Crs),
-					sta = l.Sta,
-					eta = l.Eta,
-					ata = l.Ata,
-					std = l.Std,
-					etd = l.Etd,
-					atd = l.Atd,
-					platform = l.Platform,
-					isCancelled = l.IsCancelled,
-					isPass = l.IsPass
-				}).ToList(),
-				subsequentLocations = service.SubsequentLocations?.Select(l => new
-				{
-					station = _stationLookup.GetByThreeAlpha(l.Crs),
-					sta = l.Sta,
-					eta = l.Eta,
-					ata = l.Ata,
-					std = l.Std,
-					etd = l.Etd,
-					atd = l.Atd,
-					platform = l.Platform,
-					isCancelled = l.IsCancelled,
-					isPass = l.IsPass
-				}).ToList(),
-					
-					// Disruption info
-					cancelReason = service.CancelReason,
-					delayReason = service.DelayReason,
-					adhocAlerts = service.AdhocAlerts,
-					
-					// Formation
-					formation = service.Formation != null ? new
+					TrainService? dbData = null;
+					string? originStd = null;
+
+					if (!string.IsNullOrWhiteSpace(service.TrainId) && service.Sdd.HasValue)
 					{
-						coaches = service.Formation.Coaches?.Select(c => new
+						var serviceDate = service.Sdd.Value.ToString("yyyy-MM-dd");
+						originStd = GetOriginStdFromService(service);
+						
+						if (!string.IsNullOrEmpty(originStd))
 						{
-							number = c.Number,
-							coachClass = c.CoachClass,
-							toilet = c.Toilet?.Status?.ToString()
-						}).ToList()
-					} : null,
+							var key = $"{service.TrainId}|{serviceDate}|{originStd}";
+							if (dbLookup.TryGetValue(key, out dbData))
+							{
+								usedDbIds.Add(dbData.Id);
+							}
+						}
+					}
+
+					// Map API service + dbData
+					result.Add(new
+					{
+						// National Rail API data
+						trainId = service.TrainId,
+						rid = service.Rid,
+						uid = service.Uid,
+						rsid = service.Rsid,
+						sdd = service.Sdd,
+						@operator = service.Operator,
+						operatorCode = service.OperatorCode,
+						platform = service.Platform,
+						platformIsHidden = service.PlatformIsHidden,
+						
+						// Times
+						sta = service.Sta,
+						eta = service.Eta,
+						ata = service.Ata,
+						std = service.Std,
+						originStd = originStd,
+						etd = service.Etd,
+						atd = service.Atd,
+						
+						// Status
+						isCancelled = service.IsCancelled,
+						arrivalType = service.ArrivalType?.ToString(),
+						departureType = service.DepartureType?.ToString(),
+						
+						// Journey
+						origin = service.Origin?.Select(o => _stationLookup.GetByThreeAlpha(o.Crs)).Where(s => s != null).ToList(),
+						destination = service.Destination?.Select(d => _stationLookup.GetByThreeAlpha(d.Crs)).Where(s => s != null).ToList(),
+						
+						// Calling points (preserved)
+						previousLocations = service.PreviousLocations?.Select(l => new
+						{
+							station = _stationLookup.GetByThreeAlpha(l.Crs),
+							sta = l.Sta,
+							eta = l.Eta,
+							ata = l.Ata,
+							std = l.Std,
+							etd = l.Etd,
+							atd = l.Atd,
+							platform = l.Platform,
+							isCancelled = l.IsCancelled,
+							isPass = l.IsPass
+						}).ToList(),
+						subsequentLocations = service.SubsequentLocations?.Select(l => new
+						{
+							station = _stationLookup.GetByThreeAlpha(l.Crs),
+							sta = l.Sta,
+							eta = l.Eta,
+							ata = l.Ata,
+							std = l.Std,
+							etd = l.Etd,
+							atd = l.Atd,
+							platform = l.Platform,
+							isCancelled = l.IsCancelled,
+							isPass = l.IsPass
+						}).ToList(),
+						
+						// Disruption info
+						cancelReason = service.CancelReason,
+						delayReason = service.DelayReason,
+						adhocAlerts = service.AdhocAlerts,
+						
+						// Formation
+						formation = service.Formation != null ? new
+						{
+							coaches = service.Formation.Coaches?.Select(c => new
+							{
+								number = c.Number,
+								coachClass = c.CoachClass,
+								toilet = c.Toilet?.Status?.ToString()
+							}).ToList()
+						} : null,
+						
+						// Database data
+						dbData = dbData != null ? new
+						{
+							dbData.OperationalTrainNumber,
+							dbData.ServiceDate,
+							dbData.OriginStd,
+							dbData.OriginLocationName,
+							dbData.DestLocationName,
+							dbData.RailClasses,
+							dbData.PowerType,
+							dbData.TrainOriginDateTime,
+							dbData.TrainDestDateTime
+						} : null
+					});
+				}
+			}
+
+			// Process remaining DB services
+			foreach (var dbService in dbServices)
+			{
+				if (usedDbIds.Contains(dbService.Id))
+					continue;
+
+				var originStation = _stationLookup.GetByTiploc(dbService.OriginLocationName ?? string.Empty);
+				var destStation = _stationLookup.GetByTiploc(dbService.DestLocationName ?? string.Empty);
+				var tiploc = station.Tiploc;
+
+				// Determine STD/STA
+				string? std = null;
+				string? sta = null;
+
+				if (dbService.OriginLocationName == tiploc)
+				{
+					std = dbService.OriginStd;
+				}
+				else if (dbService.DestLocationName == tiploc)
+				{
+					sta = dbService.TrainDestDateTime?.ToString("HH:mm");
+				}
+
+				result.Add(new
+				{
+					// Minimal data available from DB
+					trainId = dbService.OperationalTrainNumber,
+					rid = (string?)null,
+					uid = (string?)null,
+					sdd = dbService.ServiceDate != null ? DateOnly.ParseExact(dbService.ServiceDate, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) : (DateOnly?)null,
+					@operator = (string?)null,
+					operatorCode = (string?)null,
+					platform = (string?)null,
 					
-					// Database data (if available)
-					dbData = dbData
+					// Times
+					std = std,
+					sta = sta,
+					
+					// Journey
+					origin = originStation != null ? new List<StationCodeRecord> { originStation } : null,
+					destination = destStation != null ? new List<StationCodeRecord> { destStation } : null,
+					
+					// Database data
+					dbData = new
+					{
+						dbService.OperationalTrainNumber,
+						dbService.ServiceDate,
+						dbService.OriginStd,
+						dbService.OriginLocationName,
+						dbService.DestLocationName,
+						dbService.RailClasses,
+						dbService.PowerType,
+						dbService.TrainOriginDateTime,
+						dbService.TrainDestDateTime
+					}
 				});
 			}
 
-		return result;
-	}
+			return result.OrderBy(x => {
+				dynamic d = x;
+				return (string)(d.std ?? d.sta ?? "00:00");
+			}).ToList();
+		}
 
 	/// <summary>
 	/// Extract the origin station's scheduled departure time (STD) from the service's previous locations.
