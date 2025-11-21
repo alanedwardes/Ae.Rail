@@ -388,6 +388,7 @@ namespace Ae.Rail.Controllers
 						dbService.OriginStd,
 						dbService.OriginLocationName,
 						dbService.DestLocationName,
+						dbService.ClassCode,
 						dbService.RailClasses,
 						dbService.PowerType,
 						dbService.TrainOriginDateTime,

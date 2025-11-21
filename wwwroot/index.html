@@ -753,7 +753,7 @@ function renderStationBoard(data) {
 				${originLinks ? `<div class="muted" style="font-size:13px;">From: ${originLinks}</div>` : ''}
 			</div>
 			${callingText ? `<div class="muted" style="font-size:13px; margin-top:4px;">${callingText}</div>` : ''}
-			${hasDbData ? `<div class="muted" style="font-size:12px; margin-top:6px;">Train ${trainId} ${svc.dbData.classCode ? `(Class ${svc.dbData.classCode}) ` : ''}${clickable ? '(click for details)' : ''}</div>` : ''}
+			${hasDbData ? `<div class="muted" style="font-size:12px; margin-top:6px;">Train ${trainId} ${(svc.dbData.classCode) ? `(Class ${svc.dbData.classCode}) ` : ''}${clickable ? '(click for details)' : ''}</div>` : ''}
 		</div>`;
 	}).join('');
 	
