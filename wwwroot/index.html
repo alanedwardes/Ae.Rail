@@ -131,6 +131,13 @@
 			<div id="vehicles" class="list"></div>
 		</div>
 	</div>
+	<div id="vehicle" class="panel" style="display:none;">
+		<div class="section" style="display:flex; justify-content:space-between; align-items:center;">
+			<h3 style="margin:0;">Vehicle</h3>
+			<a id="vehicleBackBtn" href="#" class="muted" style="font-size:13px;">← Back to search</a>
+		</div>
+		<div id="vehicleContent" class="section"></div>
+	</div>
 	<div class="disclaimer">
 		Data is sourced from <a href="https://raildata.org.uk/" target="_blank" rel="noopener noreferrer">raildata.org.uk</a>. This is not an official website.
 	</div>
@@ -157,8 +164,11 @@ const vresult = document.getElementById('vresult');
 const searchPanel = document.getElementById('search');
 const svcPanel = document.getElementById('svc');
 const stationPanel = document.getElementById('station');
+const vehiclePanel = document.getElementById('vehicle');
+const vehicleContent = document.getElementById('vehicleContent');
 const backBtn = document.getElementById('backBtn');
 const stationBackBtn = document.getElementById('stationBackBtn');
+const vehicleBackBtn = document.getElementById('vehicleBackBtn');
 const homeLink = document.getElementById('homeLink');
 const wikiSection = document.getElementById('wikiSection');
 const wikiContent = document.getElementById('wikiContent');
@@ -404,11 +414,11 @@ function vehicleCardHtml(v, options = {}) {
 
 function renderVehicleDetails(v) {
 	if (!v) {
-		vresult.innerHTML = '';
+		vehicleContent.innerHTML = '';
 		return;
 	}
 	const cardHtml = vehicleCardHtml(v);
-	vresult.innerHTML = `
+	vehicleContent.innerHTML = `
 		${cardHtml}
 		<div class="section">
 			<h3>Recent services</h3>
@@ -527,21 +537,24 @@ async function loadVehicleUsage(vehId) {
 }
 
 async function showVehicle(vehId, push = true) {
-	searchPanel.style.display = 'grid';
+	searchPanel.style.display = 'none';
 	svcPanel.style.display = 'none';
+	stationPanel.style.display = 'none';
+	vehiclePanel.style.display = 'block';
 	dropdown.style.display = 'none';
+	vDropdown.style.display = 'none';
 	hideRealTimeSection();
 	if (push) {
 		const qs = `?veh=${encodeURIComponent(vehId)}`;
 		history.pushState({ veh: vehId }, '', `${qs}`);
 	}
-	vresult.innerHTML = '<div class="muted">Loading…</div>';
+	vehicleContent.innerHTML = '<div class="muted">Loading…</div>';
 	try {
 		const v = await loadVehicleById(vehId);
 		renderVehicleDetails(v);
 	} catch (e) {
 		console.error(e);
-		vresult.innerHTML = '<div class="muted">Failed to load vehicle.</div>';
+		vehicleContent.innerHTML = '<div class="muted">Failed to load vehicle.</div>';
 	}
 }
 
@@ -896,6 +909,7 @@ function renderStationBoard(data) {
 async function showStation(crs, push = true, time = null, timeWindow = null) {
 	searchPanel.style.display = 'none';
 	svcPanel.style.display = 'none';
+	vehiclePanel.style.display = 'none';
 	stationPanel.style.display = 'block';
 	sDropdown.style.display = 'none';
 	sDropdownStation.style.display = 'none';
@@ -938,6 +952,7 @@ async function showStation(crs, push = true, time = null, timeWindow = null) {
 function showSearch(replace = false) {
 	svcPanel.style.display = 'none';
 	stationPanel.style.display = 'none';
+	vehiclePanel.style.display = 'none';
 	searchPanel.style.display = 'grid';
 	dropdown.style.display = 'none';
 	hideWikipediaSection();
@@ -950,6 +965,7 @@ function showSearch(replace = false) {
 async function showService(otn, date, std, push = true) {
 	searchPanel.style.display = 'none';
 	stationPanel.style.display = 'none';
+	vehiclePanel.style.display = 'none';
 	svcPanel.style.display = 'block';
 	dropdown.style.display = 'none';
 	hideRealTimeSection();
@@ -1103,8 +1119,12 @@ async function showService(otn, date, std, push = true) {
 		if (!val) {
 			renderVehicleItems([]);
 			vresult.innerHTML = '';
+			vehiclePanel.style.display = 'none';
+			searchPanel.style.display = 'grid';
 			return;
 		}
+		vehiclePanel.style.display = 'none';
+		searchPanel.style.display = 'grid';
 		timer = setTimeout(() => searchVehicles(val), 180);
 	});
 	vq.addEventListener('keydown', (e) => {
@@ -1119,6 +1139,11 @@ async function showService(otn, date, std, push = true) {
 	});
 	
 	stationBackBtn.addEventListener('click', (e) => {
+		e.preventDefault();
+		showSearch(true);
+	});
+
+	vehicleBackBtn.addEventListener('click', (e) => {
 		e.preventDefault();
 		showSearch(true);
 	});
