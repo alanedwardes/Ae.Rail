@@ -294,7 +294,8 @@ namespace Ae.Rail.Controllers
 			record.ToiTimetableYear,
 			record.ToiStartDate,
 			record.TrainOriginDateTime,
-			record.TrainDestDateTime
+			record.TrainDestDateTime,
+			record.UpdatedAt
 		};
 
 		return Ok(payload);
