@@ -306,9 +306,13 @@ namespace Ae.Rail.Controllers
 			}
 		}
 
-		// GET /api/v1/trains/autocomplete?q=Kings to Leeds&limit=10
+		// GET /api/v1/trains/autocomplete?q=Kings to Leeds&limit=10&time=2025-11-17T05:00:00Z&timeWindow=120
 		[HttpGet("autocomplete")]
-		public async Task<IActionResult> Autocomplete([FromQuery(Name = "q")] string q, [FromQuery] int limit = 10)
+		public async Task<IActionResult> Autocomplete(
+			[FromQuery(Name = "q")] string q, 
+			[FromQuery] int limit = 10,
+			[FromQuery(Name = "time")] DateTime? time = null,
+			[FromQuery] int timeWindow = 120)
 		{
 			try
 			{
@@ -357,6 +361,23 @@ namespace Ae.Rail.Controllers
 						|| (matchingStations.Count > 0 && matchingStations.Contains(r.DestLocationName))
 					);
 				}
+			}
+
+			// Filter by date and time window if provided
+			if (time.HasValue)
+			{
+				var filterTime = time.Value.Kind == DateTimeKind.Unspecified
+					? DateTime.SpecifyKind(time.Value, DateTimeKind.Utc)
+					: time.Value.ToUniversalTime();
+				
+				var windowStart = filterTime;
+				var windowEnd = filterTime.AddMinutes(timeWindow);
+
+				baseQuery = baseQuery.Where(r =>
+					r.TrainOriginDateTime.HasValue &&
+					r.TrainOriginDateTime.Value >= windowStart &&
+					r.TrainOriginDateTime.Value <= windowEnd
+				);
 			}
 
 			// Table is already deduped by (OTN, ServiceDate, OriginStd, TrainOriginDateTime) keeping latest by updated_at

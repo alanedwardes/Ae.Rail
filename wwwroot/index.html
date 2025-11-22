@@ -15,11 +15,7 @@
 		<!-- Station Search Panel -->
 		<div class="panel">
 			<h2 class="panel-title">Station Departures & Arrivals</h2>
-			<div class="search-box">
-				<input id="sq" class="search-input" type="text" placeholder="Try 'Paddington' or 'PAD'">
-				<div id="sDropdown" class="dropdown" style="display:none;"></div>
-			</div>
-			<div class="section" style="display:flex; gap:12px; margin-top:12px;">
+			<div class="section" style="display:flex; gap:12px; margin-bottom:12px;">
 				<div style="flex:2;">
 					<div class="muted" style="font-size:12px; margin-bottom:4px;">Start Time</div>
 					<input id="sTime" type="datetime-local" class="search-input">
@@ -34,11 +30,30 @@
 					</select>
 				</div>
 			</div>
+			<div class="search-box">
+				<input id="sq" class="search-input" type="text" placeholder="Try 'Paddington' or 'PAD'">
+				<div id="sDropdown" class="dropdown" style="display:none;"></div>
+			</div>
 			<div class="hint">Search for live departure and arrival boards from National Rail. Type a station name or CRS code.</div>
 		</div>
 		<!-- Service Search Panel -->
 		<div class="panel">
 			<h2 class="panel-title">Service Search</h2>
+			<div class="section" style="display:flex; gap:12px; margin-bottom:12px;">
+				<div style="flex:2;">
+					<div class="muted" style="font-size:12px; margin-bottom:4px;">Start Time</div>
+					<input id="qTime" type="datetime-local" class="search-input">
+				</div>
+				<div style="flex:1;">
+					<div class="muted" style="font-size:12px; margin-bottom:4px;">Window</div>
+					<select id="qWindow" class="search-input">
+						<option value="60">1 hour</option>
+						<option value="120" selected>2 hours</option>
+						<option value="240">4 hours</option>
+						<option value="1440">24 hours</option>
+					</select>
+				</div>
+			</div>
 			<div class="search-box">
 				<input id="q" class="search-input" type="text" placeholder="Try 'Kings Cross to Leeds' or '1D31'">
 				<div id="dropdown" class="dropdown" style="display:none;"></div>
@@ -60,6 +75,25 @@
 		<div class="section" style="display:flex; justify-content:space-between; align-items:center;">
 			<h3 style="margin:0;"><span id="stationName"></span> (<span id="stationCrs" class="mono"></span>)</h3>
 			<a id="stationBackBtn" href="#" class="muted" style="font-size:13px;">← Back to search</a>
+		</div>
+		<div class="section" style="display:flex; gap:12px; margin-bottom:12px;">
+			<div style="flex:2;">
+				<div class="muted" style="font-size:12px; margin-bottom:4px;">Start Time</div>
+				<input id="sTimeStation" type="datetime-local" class="search-input">
+			</div>
+			<div style="flex:1;">
+				<div class="muted" style="font-size:12px; margin-bottom:4px;">Window</div>
+				<select id="sWindowStation" class="search-input">
+					<option value="60">1 hour</option>
+					<option value="120" selected>2 hours</option>
+					<option value="240">4 hours</option>
+					<option value="1440">24 hours</option>
+				</select>
+			</div>
+		</div>
+		<div class="search-box">
+			<input id="sqStation" class="search-input" type="text" placeholder="Try 'Paddington' or 'PAD'">
+			<div id="sDropdownStation" class="dropdown" style="display:none;"></div>
 		</div>
 		<div id="stationMessages" class="section" style="display:none;"></div>
 		<div class="section">
@@ -106,12 +140,18 @@ const API_BASE = window.location.origin;
 
 const q = document.getElementById('q');
 const dropdown = document.getElementById('dropdown');
+const qTime = document.getElementById('qTime');
+const qWindow = document.getElementById('qWindow');
 const vq = document.getElementById('vq');
 const vDropdown = document.getElementById('vDropdown');
 const sq = document.getElementById('sq');
 const sDropdown = document.getElementById('sDropdown');
 const sTime = document.getElementById('sTime');
 const sWindow = document.getElementById('sWindow');
+const sqStation = document.getElementById('sqStation');
+const sDropdownStation = document.getElementById('sDropdownStation');
+const sTimeStation = document.getElementById('sTimeStation');
+const sWindowStation = document.getElementById('sWindowStation');
 const vresult = document.getElementById('vresult');
 const searchPanel = document.getElementById('search');
 const svcPanel = document.getElementById('svc');
@@ -126,6 +166,19 @@ const realtimeContent = document.getElementById('realtimeContent');
 let abortCtrl = null;
 let timer = null;
 let wikiRequestToken = 0;
+
+// Sync station search controls
+function syncStationControls() {
+	sTimeStation.value = sTime.value;
+	sWindowStation.value = sWindow.value;
+	sqStation.value = sq.value;
+}
+
+function syncStationControlsReverse() {
+	sTime.value = sTimeStation.value;
+	sWindow.value = sWindowStation.value;
+	sq.value = sqStation.value;
+}
 
 function escapeHtml(value) {
 	if (value == null) return '';
@@ -195,7 +248,25 @@ function renderItems(items) {
 async function search(qs) {
 	if (abortCtrl) abortCtrl.abort();
 	abortCtrl = new AbortController();
-	const url = `${API_BASE}/api/v1/trains/autocomplete?q=${encodeURIComponent(qs)}&limit=10`;
+	
+	const params = new URLSearchParams({
+		q: qs,
+		limit: '10'
+	});
+	
+	// Add date and time window if provided
+	if (qTime.value) {
+		// Convert datetime-local value to UTC ISO string
+		const localDate = new Date(qTime.value);
+		const utcIso = localDate.toISOString();
+		params.append('time', utcIso);
+	}
+	
+	if (qWindow.value) {
+		params.append('timeWindow', qWindow.value);
+	}
+	
+	const url = `${API_BASE}/api/v1/trains/autocomplete?${params.toString()}`;
 	try {
 		const res = await fetch(url, { signal: abortCtrl.signal });
 		if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -619,13 +690,13 @@ function renderVehicles(list) {
 	});
 }
 
-function renderStationItems(items) {
+function renderStationItems(items, dropdownEl) {
 	if (!items || items.length === 0) {
-		sDropdown.style.display = 'none';
-		sDropdown.innerHTML = '';
+		dropdownEl.style.display = 'none';
+		dropdownEl.innerHTML = '';
 		return;
 	}
-	sDropdown.innerHTML = items.map(s => {
+	dropdownEl.innerHTML = items.map(s => {
 		const crs = s.threeAlpha || '';
 		const name = s.nlcDesc || '';
 		return `
@@ -636,12 +707,13 @@ function renderStationItems(items) {
 				<div class="line-2">${name}</div>
 			</div>`;
 	}).join('');
-	sDropdown.style.display = 'block';
-	Array.from(sDropdown.querySelectorAll('.item')).forEach(el => {
+	dropdownEl.style.display = 'block';
+	Array.from(dropdownEl.querySelectorAll('.item')).forEach(el => {
 		el.addEventListener('click', () => {
 			const crs = el.getAttribute('data-crs');
 			showStation(crs);
 			sDropdown.style.display = 'none';
+			sDropdownStation.style.display = 'none';
 		});
 	});
 }
@@ -654,12 +726,13 @@ async function searchStations(qs) {
 		const res = await fetch(url, { signal: abortCtrl.signal });
 		if (!res.ok) throw new Error('HTTP ' + res.status);
 		const data = await res.json();
-		renderStationItems(data);
+		return data;
 	} catch (e) {
 		if (e.name !== 'AbortError') {
 			console.error(e);
-			renderStationItems([]);
+			return [];
 		}
+		return [];
 	}
 }
 
@@ -824,13 +897,23 @@ async function showStation(crs, push = true, time = null, timeWindow = null) {
 	svcPanel.style.display = 'none';
 	stationPanel.style.display = 'block';
 	sDropdown.style.display = 'none';
+	sDropdownStation.style.display = 'none';
 	hideRealTimeSection();
 
 	if (!time) time = sTime.value;
-	else sTime.value = time;
+	else {
+		sTime.value = time;
+		sTimeStation.value = time;
+	}
 
 	if (!timeWindow) timeWindow = sWindow.value;
-	else sWindow.value = timeWindow;
+	else {
+		sWindow.value = timeWindow;
+		sWindowStation.value = timeWindow;
+	}
+
+	// Sync search box value
+	syncStationControls();
 
 	if (push) {
 		const params = new URLSearchParams();
@@ -922,19 +1005,79 @@ async function showService(otn, date, std, push = true) {
 			renderItems([]);
 		}
 	});
+
+	// Trigger search when date or window changes
+	qTime.addEventListener('change', () => {
+		const val = q.value.trim();
+		if (val) {
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(() => search(val), 180);
+		}
+	});
+	qWindow.addEventListener('change', () => {
+		const val = q.value.trim();
+		if (val) {
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(() => search(val), 180);
+		}
+	});
 	
-	sq.addEventListener('input', () => {
-		const val = sq.value.trim();
+	function handleStationSearch(inputEl, dropdownEl) {
+		const val = inputEl.value.trim();
 		if (timer) clearTimeout(timer);
 		if (!val) {
-			renderStationItems([]);
+			renderStationItems([], dropdownEl);
 			return;
 		}
-		timer = setTimeout(() => searchStations(val), 180);
+		timer = setTimeout(() => {
+			searchStations(val).then(items => {
+				renderStationItems(items, dropdownEl);
+			});
+		}, 180);
+	}
+
+	sq.addEventListener('input', () => {
+		handleStationSearch(sq, sDropdown);
+		sqStation.value = sq.value;
 	});
 	sq.addEventListener('keydown', (e) => {
 		if (e.key === 'Escape') {
-			renderStationItems([]);
+			renderStationItems([], sDropdown);
+		}
+	});
+
+	sqStation.addEventListener('input', () => {
+		handleStationSearch(sqStation, sDropdownStation);
+		sq.value = sqStation.value;
+	});
+	sqStation.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') {
+			renderStationItems([], sDropdownStation);
+		}
+	});
+
+	// Sync date and window changes
+	sTime.addEventListener('change', () => {
+		sTimeStation.value = sTime.value;
+	});
+	sWindow.addEventListener('change', () => {
+		sWindowStation.value = sWindow.value;
+	});
+
+	sTimeStation.addEventListener('change', () => {
+		sTime.value = sTimeStation.value;
+		const qs = new URLSearchParams(location.search);
+		const station = qs.get('station');
+		if (station) {
+			showStation(station, true, sTimeStation.value, sWindowStation.value);
+		}
+	});
+	sWindowStation.addEventListener('change', () => {
+		sWindow.value = sWindowStation.value;
+		const qs = new URLSearchParams(location.search);
+		const station = qs.get('station');
+		if (station) {
+			showStation(station, true, sTimeStation.value, sWindowStation.value);
 		}
 	});
 	
@@ -994,6 +1137,8 @@ async function showService(otn, date, std, push = true) {
 	const now = new Date();
 	const localIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
 	sTime.value = localIso;
+	sTimeStation.value = localIso;
+	qTime.value = localIso;
 
 	// Initial route
 	const qs = new URLSearchParams(location.search);
