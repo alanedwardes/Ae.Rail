@@ -31,7 +31,10 @@ namespace Ae.Rail.Services
 		public async Task<bool> ParseAndSaveAsync(string messageValue, CancellationToken cancellationToken)
 		{
 			if (string.IsNullOrWhiteSpace(messageValue))
+			{
+				_logger.LogWarning("Received empty or whitespace message value");
 				return false;
+			}
 
 			// Try parse as JSON
 			if (TryParseJson(messageValue, out var jsonDoc))
@@ -45,6 +48,9 @@ namespace Ae.Rail.Services
 				return await ParseAndSaveAsync(jsonDoc, cancellationToken);
 			}
 
+			_logger.LogWarning("Message format not recognized as JSON or TAF/TSI XML. Content preview: {Content}", 
+				messageValue.Length > 100 ? messageValue.Substring(0, 100) : messageValue);
+
 			return false;
 		}
 
@@ -54,32 +60,53 @@ namespace Ae.Rail.Services
 			{
 				// Check if this is a valid train consist message
 				if (!payload.RootElement.TryGetProperty("OperationalTrainNumberIdentifier", out _))
+				{
+					_logger.LogWarning("Missing OperationalTrainNumberIdentifier property");
 					return false;
+				}
 
 				// Extract key identifiers
 				var otn = payload.RootElement.GetProperty("OperationalTrainNumberIdentifier")
 					.GetProperty("OperationalTrainNumber").GetString();
 
 				if (string.IsNullOrEmpty(otn))
+				{
+					_logger.LogWarning("OperationalTrainNumber is null or empty");
 					return false;
+				}
 
 			// Get start date
 			if (!payload.RootElement.TryGetProperty("TrainOperationalIdentification", out var toi))
+			{
+				_logger.LogWarning("Missing TrainOperationalIdentification for OTN {Otn}", otn);
 				return false;
+			}
 
 			if (!toi.TryGetProperty("TransportOperationalIdentifiers", out var toiArray))
+			{
+				_logger.LogWarning("Missing TransportOperationalIdentifiers for OTN {Otn}", otn);
 				return false;
+			}
 
 			if (toiArray.GetArrayLength() == 0)
+			{
+				_logger.LogWarning("TransportOperationalIdentifiers array is empty for OTN {Otn}", otn);
 				return false;
+			}
 
 			var toiFirst = toiArray[0];
 			if (!toiFirst.TryGetProperty("StartDate", out var startDateProp))
+			{
+				_logger.LogWarning("Missing StartDate in TransportOperationalIdentifiers for OTN {Otn}", otn);
 				return false;
+			}
 
 			var startDateStr = startDateProp.GetString();
 			if (string.IsNullOrEmpty(startDateStr) || !DateTime.TryParse(startDateStr, out var startDate))
+			{
+				_logger.LogWarning("Invalid or missing StartDate '{StartDate}' for OTN {Otn}", startDateStr, otn);
 				return false;
+			}
 
 			// Ensure UTC for PostgreSQL timestamptz
 			startDate = DateTime.SpecifyKind(startDate, DateTimeKind.Utc);
@@ -88,17 +115,26 @@ namespace Ae.Rail.Services
 
 				// Get allocation
 				if (!payload.RootElement.TryGetProperty("Allocation", out var allocations) || allocations.GetArrayLength() == 0)
+				{
+					_logger.LogWarning("Missing or empty Allocation array for OTN {Otn}", otn);
 					return false;
+				}
 
 				var firstAllocation = allocations[0];
 
 				// Get origin time
 				if (!firstAllocation.TryGetProperty("TrainOriginDateTime", out var originDateTimeProp))
+				{
+					_logger.LogWarning("Missing TrainOriginDateTime in first Allocation for OTN {Otn}", otn);
 					return false;
+				}
 
 			var originDateTimeStr = originDateTimeProp.GetString();
 			if (string.IsNullOrEmpty(originDateTimeStr) || !DateTime.TryParse(originDateTimeStr, out var originDateTime))
+			{
+				_logger.LogWarning("Invalid or missing TrainOriginDateTime '{OriginDate}' for OTN {Otn}", originDateTimeStr, otn);
 				return false;
+			}
 
 			// Ensure UTC for PostgreSQL timestamptz
 			originDateTime = DateTime.SpecifyKind(originDateTime, DateTimeKind.Utc);
@@ -338,11 +374,17 @@ namespace Ae.Rail.Services
 			try
 			{
 				if (!veh.TryGetProperty("VehicleId", out var vehicleIdProp))
+				{
+					_logger.LogWarning("Missing VehicleId in Vehicle element");
 					return null;
+				}
 
 				var vehicleId = vehicleIdProp.GetString();
 				if (string.IsNullOrEmpty(vehicleId))
+				{
+					_logger.LogWarning("VehicleId is null or empty");
 					return null;
+				}
 
 				var vehicle = new VehicleEntity
 				{
@@ -453,11 +495,17 @@ namespace Ae.Rail.Services
 			try
 			{
 				if (!veh.TryGetProperty("VehicleId", out var vehicleIdProp))
+				{
+					_logger.LogWarning("Missing VehicleId in ServiceVehicle element for OTN {Otn}", otn);
 					return null;
+				}
 
 				var vehicleId = vehicleIdProp.GetString();
 				if (string.IsNullOrEmpty(vehicleId))
+				{
+					_logger.LogWarning("VehicleId is null or empty in ServiceVehicle for OTN {Otn}", otn);
 					return null;
+				}
 
 				var serviceVehicle = new ServiceVehicleEntity
 				{
