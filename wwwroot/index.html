@@ -19,6 +19,21 @@
 				<input id="sq" class="search-input" type="text" placeholder="Try 'Paddington' or 'PAD'">
 				<div id="sDropdown" class="dropdown" style="display:none;"></div>
 			</div>
+			<div class="section" style="display:flex; gap:12px; margin-top:12px;">
+				<div style="flex:2;">
+					<div class="muted" style="font-size:12px; margin-bottom:4px;">Start Time</div>
+					<input id="sTime" type="datetime-local" class="search-input">
+				</div>
+				<div style="flex:1;">
+					<div class="muted" style="font-size:12px; margin-bottom:4px;">Window</div>
+					<select id="sWindow" class="search-input">
+						<option value="60">1 hour</option>
+						<option value="120" selected>2 hours</option>
+						<option value="240">4 hours</option>
+						<option value="1440">24 hours</option>
+					</select>
+				</div>
+			</div>
 			<div class="hint">Search for live departure and arrival boards from National Rail. Type a station name or CRS code.</div>
 		</div>
 		<!-- Service Search Panel -->
@@ -95,6 +110,8 @@ const vq = document.getElementById('vq');
 const vDropdown = document.getElementById('vDropdown');
 const sq = document.getElementById('sq');
 const sDropdown = document.getElementById('sDropdown');
+const sTime = document.getElementById('sTime');
+const sWindow = document.getElementById('sWindow');
 const vresult = document.getElementById('vresult');
 const searchPanel = document.getElementById('search');
 const svcPanel = document.getElementById('svc');
@@ -646,8 +663,21 @@ async function searchStations(qs) {
 	}
 }
 
-async function loadStationBoard(crs) {
-	const url = `${API_BASE}/api/v1/stations/board?crs=${encodeURIComponent(crs)}&numRows=15&timeWindow=120`;
+async function loadStationBoard(crs, time, timeWindow) {
+	const params = new URLSearchParams({
+		crs: crs,
+		numRows: 15,
+		timeWindow: timeWindow || 120
+	});
+	if (time) {
+		// Convert datetime-local value to UTC ISO string
+		// datetime-local gives "YYYY-MM-DDTHH:mm" in local time, convert to UTC
+		const localDate = new Date(time);
+		const utcIso = localDate.toISOString();
+		params.append('time', utcIso);
+	}
+	
+	const url = `${API_BASE}/api/v1/stations/board?${params.toString()}`;
 	const res = await fetch(url);
 	if (!res.ok) throw new Error('Station board load failed');
 	return await res.json();
@@ -789,19 +819,31 @@ function renderStationBoard(data) {
 	});
 }
 
-async function showStation(crs, push = true) {
+async function showStation(crs, push = true, time = null, timeWindow = null) {
 	searchPanel.style.display = 'none';
 	svcPanel.style.display = 'none';
 	stationPanel.style.display = 'block';
 	sDropdown.style.display = 'none';
 	hideRealTimeSection();
+
+	if (!time) time = sTime.value;
+	else sTime.value = time;
+
+	if (!timeWindow) timeWindow = sWindow.value;
+	else sWindow.value = timeWindow;
+
 	if (push) {
-		const qs = `?station=${encodeURIComponent(crs)}`;
-		history.pushState({ station: crs }, '', `${qs}`);
+		const params = new URLSearchParams();
+		params.set('station', crs);
+		if (time) params.set('time', time);
+		if (timeWindow) params.set('timeWindow', timeWindow);
+		
+		const qs = `?${params.toString()}`;
+		history.pushState({ station: crs, time, window: timeWindow }, '', qs);
 	}
 	document.getElementById('stationServices').innerHTML = '<div class="muted">Loading live departure board…</div>';
 	try {
-		const data = await loadStationBoard(crs);
+		const data = await loadStationBoard(crs, time, timeWindow);
 		renderStationBoard(data);
 	} catch (e) {
 		console.error(e);
@@ -934,8 +976,11 @@ async function showService(otn, date, std, push = true) {
 		const otn = qs.get('otn') || '';
 		const date = qs.get('date') || '';
 		const std = qs.get('std') || '';
+		const time = qs.get('time');
+		const windowVal = qs.get('timeWindow');
+
 		if (station) {
-			showStation(station, /*push*/false);
+			showStation(station, /*push*/false, time, windowVal);
 		} else if (veh) {
 			showVehicle(veh, /*push*/false);
 		} else if (otn && date && std) {
@@ -945,6 +990,11 @@ async function showService(otn, date, std, push = true) {
 		}
 	});
 
+	// Set default time
+	const now = new Date();
+	const localIso = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+	sTime.value = localIso;
+
 	// Initial route
 	const qs = new URLSearchParams(location.search);
 	const station = qs.get('station') || '';
@@ -952,8 +1002,11 @@ async function showService(otn, date, std, push = true) {
 	const otn = qs.get('otn') || '';
 	const date = qs.get('date') || '';
 	const std = qs.get('std') || '';
+	const time = qs.get('time');
+	const windowVal = qs.get('timeWindow');
+
 	if (station) {
-		showStation(station, /*push*/false);
+		showStation(station, /*push*/false, time, windowVal);
 	} else if (veh) {
 		showVehicle(veh, /*push*/false);
 	} else if (otn && date && std) {

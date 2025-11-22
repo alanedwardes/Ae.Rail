@@ -112,10 +112,16 @@ namespace Ae.Rail.Controllers
 				}
 
 				// Use provided time or current time
-				var boardTime = time ?? DateTime.UtcNow;
+				// Ensure boardTime is UTC - if time is provided but has Unspecified kind (from datetime-local),
+				// treat it as UTC since datetime-local doesn't include timezone info
+				var boardTime = time.HasValue 
+					? (time.Value.Kind == DateTimeKind.Unspecified 
+						? DateTime.SpecifyKind(time.Value, DateTimeKind.Utc)
+						: time.Value.ToUniversalTime())
+					: DateTime.UtcNow;
 
-				_logger.LogInformation("Fetching station board for {Crs} ({StationName}) at {Time}", 
-					crs, station.NlcDesc, boardTime);
+				_logger.LogInformation("Fetching station board for {Crs} ({StationName}) at {Time} (UTC) with window {Window} minutes", 
+					crs, station.NlcDesc, boardTime, timeWindow);
 
 				// 1. Fetch API data (optional/can fail)
 				Models.NationalRail.StationBoardWithDetails? board = null;
@@ -134,12 +140,12 @@ namespace Ae.Rail.Controllers
 				}
 
 				// 2. Fetch DB data (consist data)
-				// We fetch all services for the day touching this station to merge
-				var dbServices = await GetDbServices(station, boardTime);
+				// Filter services within the time window
+				var dbServices = await GetDbServices(station, boardTime, timeWindow);
 
 				// 3. Merge API and DB data
 				// This handles deduplication: if in API, use API + DB enrich. If only in DB, use DB.
-				var mergedServices = MergeServices(board?.TrainServices, dbServices, station);
+				var mergedServices = MergeServices(board?.TrainServices, dbServices, station, boardTime, timeWindow);
 
 			var response = new
 			{
@@ -169,28 +175,54 @@ namespace Ae.Rail.Controllers
 			}
 		}
 
-		private async Task<List<TrainService>> GetDbServices(StationCodeRecord station, DateTime date)
+		private async Task<List<TrainService>> GetDbServices(StationCodeRecord station, DateTime boardTime, int timeWindowMinutes)
 		{
 			if (string.IsNullOrWhiteSpace(station.Tiploc))
 			{
 				return new List<TrainService>();
 			}
 
-			var serviceDate = date.ToString("yyyy-MM-dd");
+			var serviceDate = boardTime.ToString("yyyy-MM-dd");
 			var tiploc = station.Tiploc;
+			var windowStart = boardTime;
+			var windowEnd = boardTime.AddMinutes(timeWindowMinutes);
 
-			return await _dbContext.TrainServices
+			// Fetch all services for the day that touch this station
+			var allServices = await _dbContext.TrainServices
 				.AsNoTracking()
 				.Where(ts => ts.ServiceDate == serviceDate && 
 							(ts.OriginLocationName == tiploc || ts.DestLocationName == tiploc))
-				.OrderBy(ts => ts.OriginStd)
 				.ToListAsync();
+
+			// Filter services where the scheduled time at this station falls within the window
+			var filteredServices = allServices.Where(ts =>
+			{
+				DateTime? scheduledTime = null;
+
+				if (ts.OriginLocationName == tiploc && ts.TrainOriginDateTime.HasValue)
+				{
+					scheduledTime = ts.TrainOriginDateTime.Value;
+				}
+				else if (ts.DestLocationName == tiploc && ts.TrainDestDateTime.HasValue)
+				{
+					scheduledTime = ts.TrainDestDateTime.Value;
+				}
+
+				if (!scheduledTime.HasValue)
+					return false;
+
+				return scheduledTime.Value >= windowStart && scheduledTime.Value <= windowEnd;
+			}).OrderBy(ts => ts.OriginStd).ToList();
+
+			return filteredServices;
 		}
 
 		private List<object> MergeServices(
 			List<Models.NationalRail.ServiceItemWithLocations>? apiServices,
 			List<TrainService> dbServices,
-			StationCodeRecord station)
+			StationCodeRecord station,
+			DateTime boardTime,
+			int timeWindowMinutes)
 		{
 			var result = new List<object>();
 			var dbLookup = new Dictionary<string, TrainService>();
@@ -326,6 +358,9 @@ namespace Ae.Rail.Controllers
 			}
 
 			// Process remaining DB services
+			var windowStart = boardTime;
+			var windowEnd = boardTime.AddMinutes(timeWindowMinutes);
+
 			foreach (var dbService in dbServices)
 			{
 				if (usedDbIds.Contains(dbService.Id))
@@ -360,6 +395,11 @@ namespace Ae.Rail.Controllers
 				{
 					sta = dbService.TrainDestDateTime;
 				}
+
+				// Filter by time window - only include if scheduled time falls within window
+				var scheduledTime = std ?? sta;
+				if (!scheduledTime.HasValue || scheduledTime.Value < windowStart || scheduledTime.Value > windowEnd)
+					continue;
 
 				result.Add(new
 				{
