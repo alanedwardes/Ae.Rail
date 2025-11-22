@@ -113,53 +113,58 @@ namespace Ae.Rail.Services
 
 			var serviceDate = startDate.ToString("yyyy-MM-dd");
 
-				// Get allocation
-				if (!payload.RootElement.TryGetProperty("Allocation", out var allocations) || allocations.GetArrayLength() == 0)
+				// Get allocation - optional, needed for TrainService but not for Vehicles
+				bool hasAllocation = payload.RootElement.TryGetProperty("Allocation", out var allocations) && allocations.GetArrayLength() > 0;
+				DateTime? originDateTime = null;
+				string? originStd = null;
+
+				if (hasAllocation)
 				{
-					_logger.LogWarning("Missing or empty Allocation array for OTN {Otn}", otn);
-					return false;
+					var firstAllocation = allocations[0];
+
+					// Get origin time
+					if (firstAllocation.TryGetProperty("TrainOriginDateTime", out var originDateTimeProp))
+					{
+						var originDateTimeStr = originDateTimeProp.GetString();
+						if (!string.IsNullOrEmpty(originDateTimeStr) && DateTime.TryParse(originDateTimeStr, out var parsedOriginDateTime))
+						{
+							// Ensure UTC for PostgreSQL timestamptz
+							originDateTime = DateTime.SpecifyKind(parsedOriginDateTime, DateTimeKind.Utc);
+							originStd = originDateTime.Value.ToString("HH:mm");
+						}
+					}
 				}
 
-				var firstAllocation = allocations[0];
-
-				// Get origin time
-				if (!firstAllocation.TryGetProperty("TrainOriginDateTime", out var originDateTimeProp))
+				if (!hasAllocation || originDateTime == null)
 				{
-					_logger.LogWarning("Missing TrainOriginDateTime in first Allocation for OTN {Otn}", otn);
-					return false;
+					_logger.LogDebug("Missing or empty Allocation array for OTN {Otn} - skipping TrainService creation, but processing vehicles", otn);
 				}
 
-			var originDateTimeStr = originDateTimeProp.GetString();
-			if (string.IsNullOrEmpty(originDateTimeStr) || !DateTime.TryParse(originDateTimeStr, out var originDateTime))
-			{
-				_logger.LogWarning("Invalid or missing TrainOriginDateTime '{OriginDate}' for OTN {Otn}", originDateTimeStr, otn);
-				return false;
-			}
-
-			// Ensure UTC for PostgreSQL timestamptz
-			originDateTime = DateTime.SpecifyKind(originDateTime, DateTimeKind.Utc);
-
-			var originStd = originDateTime.ToString("HH:mm");
-
-				// Parse train service
-				var trainService = ParseTrainService(payload, otn, serviceDate, originStd, originDateTime);
-				if (trainService != null)
+				// Parse train service (only if we have Allocation and originDateTime)
+				if (hasAllocation && originDateTime != null && originStd != null)
 				{
-					await UpsertTrainServiceAsync(trainService, cancellationToken);
+					var trainService = ParseTrainService(payload, otn, serviceDate, originStd, originDateTime.Value);
+					if (trainService != null)
+					{
+						await UpsertTrainServiceAsync(trainService, cancellationToken);
+					}
 				}
 
-				// Parse vehicles
+				// Parse vehicles (can be processed even without Allocation)
 				var vehicles = ParseVehicles(payload);
 				foreach (var vehicle in vehicles)
 				{
 					await UpsertVehicleAsync(vehicle, cancellationToken);
 				}
 
-			// Parse service vehicles
-			var serviceVehicles = ParseServiceVehicles(payload, otn, serviceDate, originStd);
-			foreach (var serviceVehicle in serviceVehicles)
+			// Parse service vehicles (only if we have originStd)
+			if (originStd != null)
 			{
-				await UpsertServiceVehicleAsync(serviceVehicle, cancellationToken);
+				var serviceVehicles = ParseServiceVehicles(payload, otn, serviceDate, originStd);
+				foreach (var serviceVehicle in serviceVehicles)
+				{
+					await UpsertServiceVehicleAsync(serviceVehicle, cancellationToken);
+				}
 			}
 
 			// NOTE: Does NOT save - caller must call SaveChangesAsync for batching efficiency
