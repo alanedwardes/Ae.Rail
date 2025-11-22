@@ -841,8 +841,8 @@ function renderStationBoard(data) {
 		const hasDbData = svc.dbData != null;
 		// Use origin STD for database lookup (not the station's STD)
 		const serviceDate = svc.sdd ? new Date(svc.sdd).toISOString().split('T')[0] : null;
-		// If originStd is not available (e.g. database fallback only), try to use the DB data directly
-		const originStd = svc.originStd || (hasDbData ? svc.dbData.originStd : null); 
+		// originStd is now at root level
+		const originStd = svc.originStd;
 		const clickable = hasDbData && trainId && serviceDate && originStd;
 		
 		const statusColor = cancelled ? 'var(--danger)' : 'var(--text)';
@@ -870,7 +870,7 @@ function renderStationBoard(data) {
 				${originLinks ? `<div class="muted" style="font-size:13px;">From: ${originLinks}</div>` : ''}
 			</div>
 			${callingText ? `<div class="muted" style="font-size:13px; margin-top:4px;">${callingText}</div>` : ''}
-			${hasDbData ? `<div class="muted" style="font-size:12px; margin-top:6px;">Train ${trainId} ${(svc.dbData.classCode) ? `(Class ${svc.dbData.classCode}) ` : ''}${clickable ? '(click for details)' : ''}</div>` : ''}
+			${hasDbData ? `<div class="muted" style="font-size:12px; margin-top:6px;">Train ${trainId} ${(svc.trainClass) ? `(Class ${svc.trainClass}) ` : ''}${clickable ? '(click for details)' : ''}</div>` : ''}
 		</div>`;
 	}).join('');
 	

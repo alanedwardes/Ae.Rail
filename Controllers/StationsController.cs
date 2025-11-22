@@ -263,6 +263,14 @@ namespace Ae.Rail.Controllers
 						}
 					}
 
+					// Get origin/destination stations from TIPLOC codes if dbData available
+					var originStationFromDb = dbData != null && !string.IsNullOrWhiteSpace(dbData.OriginLocationName)
+						? _stationLookup.GetByTiploc(dbData.OriginLocationName)
+						: null;
+					var destStationFromDb = dbData != null && !string.IsNullOrWhiteSpace(dbData.DestLocationName)
+						? _stationLookup.GetByTiploc(dbData.DestLocationName)
+						: null;
+
 					// Map API service + dbData
 					result.Add(new
 					{
@@ -285,6 +293,8 @@ namespace Ae.Rail.Controllers
 						originStd = originStd,
 						etd = service.Etd,
 						atd = service.Atd,
+						originDateTime = dbData?.TrainOriginDateTime,
+						destDateTime = dbData?.TrainDestDateTime,
 						
 						// Status
 						isCancelled = service.IsCancelled,
@@ -294,6 +304,10 @@ namespace Ae.Rail.Controllers
 						// Journey
 						origin = service.Origin?.Select(o => _stationLookup.GetByThreeAlpha(o.Crs)).Where(s => s != null).ToList(),
 						destination = service.Destination?.Select(d => _stationLookup.GetByThreeAlpha(d.Crs)).Where(s => s != null).ToList(),
+						originTiploc = dbData?.OriginLocationName,
+						destTiploc = dbData?.DestLocationName,
+						originStation = originStationFromDb,
+						destStation = destStationFromDb,
 						
 						// Calling points (preserved)
 						previousLocations = service.PreviousLocations?.Select(l => new
@@ -328,6 +342,13 @@ namespace Ae.Rail.Controllers
 						delayReason = service.DelayReason,
 						adhocAlerts = service.AdhocAlerts,
 						
+						// Train characteristics (flattened from dbData)
+						trainClass = dbData?.ClassCode,
+						powerType = dbData?.PowerType,
+						railClasses = dbData?.RailClasses,
+						fleetId = dbData?.FleetId,
+						resourceGroupId = dbData?.ResourceGroupId,
+						
 						// Formation
 						formation = service.Formation != null ? new
 						{
@@ -339,19 +360,17 @@ namespace Ae.Rail.Controllers
 							}).ToList()
 						} : null,
 						
-						// Database data
+						// Database metadata (technical/internal fields only)
 						dbData = dbData != null ? new
 						{
-							dbData.OperationalTrainNumber,
-							dbData.ServiceDate,
-							dbData.OriginStd,
-							dbData.OriginLocationName,
-							dbData.DestLocationName,
-							dbData.ClassCode,
-							dbData.RailClasses,
-							dbData.PowerType,
-							dbData.TrainOriginDateTime,
-							dbData.TrainDestDateTime
+							id = dbData.Id,
+							originLocationPrimaryCode = dbData.OriginLocationPrimaryCode,
+							destLocationPrimaryCode = dbData.DestLocationPrimaryCode,
+							toiCore = dbData.ToiCore,
+							toiVariant = dbData.ToiVariant,
+							toiTimetableYear = dbData.ToiTimetableYear,
+							toiStartDate = dbData.ToiStartDate,
+							typeOfResource = dbData.TypeOfResource
 						} : null
 					});
 				}
@@ -403,36 +422,71 @@ namespace Ae.Rail.Controllers
 
 				result.Add(new
 				{
-					// Minimal data available from DB
+					// Service identification
 					trainId = dbService.OperationalTrainNumber,
 					rid = (string?)null,
 					uid = (string?)null,
+					rsid = (string?)null,
 					sdd = dbService.ServiceDate != null ? DateTime.ParseExact(dbService.ServiceDate, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture) : (DateTime?)null,
 					@operator = (string?)null,
 					operatorCode = (string?)null,
 					platform = (string?)null,
+					platformIsHidden = false,
 					
 					// Times
 					std = std,
 					sta = sta,
+					eta = (DateTime?)null,
+					ata = (DateTime?)null,
+					etd = (DateTime?)null,
+					atd = (DateTime?)null,
+					originStd = dbService.OriginStd,
+					originDateTime = dbService.TrainOriginDateTime,
+					destDateTime = dbService.TrainDestDateTime,
+					
+					// Status
+					isCancelled = false,
+					arrivalType = (string?)null,
+					departureType = (string?)null,
 					
 					// Journey
 					origin = originStation != null ? new List<StationCodeRecord> { originStation } : null,
 					destination = destStation != null ? new List<StationCodeRecord> { destStation } : null,
+					originTiploc = dbService.OriginLocationName,
+					destTiploc = dbService.DestLocationName,
+					originStation = originStation,
+					destStation = destStation,
 					
-					// Database data
+					// Calling points
+					previousLocations = (List<object>?)null,
+					subsequentLocations = (List<object>?)null,
+					
+					// Disruption info
+					cancelReason = (string?)null,
+					delayReason = (string?)null,
+					adhocAlerts = (List<string>?)null,
+					
+					// Train characteristics (flattened from dbData)
+					trainClass = dbService.ClassCode,
+					powerType = dbService.PowerType,
+					railClasses = dbService.RailClasses,
+					fleetId = dbService.FleetId,
+					resourceGroupId = dbService.ResourceGroupId,
+					
+					// Formation
+					formation = (object?)null,
+					
+					// Database metadata (technical/internal fields only)
 					dbData = new
 					{
-						dbService.OperationalTrainNumber,
-						dbService.ServiceDate,
-						dbService.OriginStd,
-						dbService.OriginLocationName,
-						dbService.DestLocationName,
-						dbService.ClassCode,
-						dbService.RailClasses,
-						dbService.PowerType,
-						dbService.TrainOriginDateTime,
-						dbService.TrainDestDateTime
+						id = dbService.Id,
+						originLocationPrimaryCode = dbService.OriginLocationPrimaryCode,
+						destLocationPrimaryCode = dbService.DestLocationPrimaryCode,
+						toiCore = dbService.ToiCore,
+						toiVariant = dbService.ToiVariant,
+						toiTimetableYear = dbService.ToiTimetableYear,
+						toiStartDate = dbService.ToiStartDate,
+						typeOfResource = dbService.TypeOfResource
 					}
 				});
 			}
