@@ -19,7 +19,6 @@ namespace Ae.Rail.Controllers
 	{
 	private readonly ILogger<TrainsController> _logger;
 	private readonly PostgresDbContext _dbContext;
-	private readonly ITiplocLookup _tiplocLookup;
 	private readonly IStationCodeLookup _stationCodeLookup;
 	private readonly IStationFinder _stationFinder;
 	private readonly INationalRailApiClient _nationalRailClient;
@@ -27,14 +26,12 @@ namespace Ae.Rail.Controllers
 	public TrainsController(
 		ILogger<TrainsController> logger,
 		PostgresDbContext dbContext,
-		ITiplocLookup tiplocLookup,
 		IStationCodeLookup stationCodeLookup,
 		IStationFinder stationFinder,
 		INationalRailApiClient nationalRailClient)
 	{
 		_logger = logger;
 		_dbContext = dbContext;
-		_tiplocLookup = tiplocLookup;
 		_stationCodeLookup = stationCodeLookup;
 		_stationFinder = stationFinder;
 		_nationalRailClient = nationalRailClient;

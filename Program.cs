@@ -48,7 +48,6 @@ builder.Services.AddScoped<Ae.Rail.Services.IReprocessingService, Ae.Rail.Servic
 builder.Services.AddHostedService<Ae.Rail.Services.TrainsConsumerService>();
 // Materialized view refresh service (DEPRECATED - replaced by real-time parsing)
 // builder.Services.AddHostedService<Ae.Rail.Services.MvRefreshService>();
-builder.Services.AddSingleton<Ae.Rail.Services.ITiplocLookup, Ae.Rail.Services.TiplocLookup>();
 builder.Services.AddSingleton<Ae.Rail.Services.IStationCodeLookup, Ae.Rail.Services.StationCodeLookup>();
 builder.Services.AddSingleton<Ae.Rail.Services.IStationFinder, Ae.Rail.Services.StationFinder>();
 
